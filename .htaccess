@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------
+# SO CHU NHIEM DIEN TU THCS - ROOT APACHE CONFIGURATION
+# Tu dong chuyen huong vao dist/ neu Document Root tro vao thu muc du an
+# ----------------------------------------------------------------------
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  DirectoryIndex dist/index.html index.html
+
+  # Neu request da o trong /dist/, xu ly SPA fallback trong dist
+  RewriteCond %{REQUEST_URI} ^/dist/ [NC]
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  RewriteCond %{REQUEST_URI} ^/dist/ [NC]
+  RewriteRule ^ dist/index.html [L]
+
+  # Neu thu muc dist/index.html ton tai va request khong phai /dist/
+  # Tu dong dinh tuyen tai nguyen tinh trong dist/ neu file ton tai
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteCond %{REQUEST_URI} !^/dist/ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/dist%{REQUEST_URI} -f
+  RewriteRule ^(.*)$ dist/$1 [L]
+
+  # Dinh tuyen cac trang con vao dist/index.html
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteCond %{REQUEST_URI} !^/dist/ [NC]
+  RewriteRule ^(.*)$ dist/index.html [L]
+
+  # Truong hop file tinh duoc copy thang vao goc thu muc
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Cấu hình MIME Types cho JavaScript và CSS
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+</IfModule>
+
+# Bao mat: Chặn truy cap truc tiep cac tep tin nguon va cau hinh
+<FilesMatch "^(\.env|\.git|package\.json|server\.ts|tsconfig\.json)">
+  Order allow,deny
+  Deny from all
+</FilesMatch>

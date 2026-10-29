@@ -127,6 +127,8 @@ interface AppContextType {
   updateUserAccount: (id: string, data: Partial<User> & { newPassword?: string }) => { success: boolean; message: string };
   updateUserLoginEmail: (id: string, newEmail: string, syncUsername?: boolean) => { success: boolean; message: string };
   resetUserPassword: (id: string, newPassword?: string) => { success: boolean; message: string; temporaryPassword?: string };
+  changeCurrentUserPassword: (oldPassword: string, newPassword: string) => { success: boolean; message: string };
+  batchResetTeacherPasswords: (newPassword: string) => { count: number; message: string };
   toggleLockUserAccount: (id: string) => { success: boolean; message: string };
   deleteUserAccount: (id: string) => { success: boolean; message: string };
   autoGenerateAccountsForAllTeachers: () => { createdCount: number; existingCount: number; message: string };
@@ -500,12 +502,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               u.email?.toLowerCase() === 'admin@nguyendinhanh.edu.vn' ||
               u.id === 'user-admin-1' ||
               u.id === 'user-admin-ducminh';
+            const isOldDefault =
+              !u.passwordHash ||
+              u.passwordHash === '123' ||
+              u.passwordHash === 'Gv@2026' ||
+              u.passwordHash === 'Admin@2026';
+            const effectivePass = isOldDefault
+              ? (isAdmin ? 'T@mduc88$#' : 'Giaovien@2026')
+              : (u.passwordHash || (isAdmin ? 'T@mduc88$#' : 'Giaovien@2026'));
             return {
               ...u,
               role: isAdmin ? ('ADMIN' as UserRole) : u.role,
               department: normalizeDepartmentName(u.department),
-              passwordHash: isAdmin ? 'T@mduc88$#' : 'Giaovien@2026',
-              plainPassword: isAdmin ? 'T@mduc88$#' : 'Giaovien@2026',
+              passwordHash: effectivePass,
+              plainPassword: effectivePass,
             };
           });
 
@@ -3937,6 +3947,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const changeCurrentUserPassword = (
+    oldPassword: string,
+    newPassword: string
+  ): { success: boolean; message: string } => {
+    if (!currentUser) {
+      return { success: false, message: 'Chưa đăng nhập hệ thống!' };
+    }
+    const cleanOld = oldPassword.trim();
+    const cleanNew = newPassword.trim();
+
+    if (!cleanNew || cleanNew.length < 6) {
+      return { success: false, message: 'Mật khẩu mới phải có tối thiểu 6 ký tự!' };
+    }
+
+    const isOldValid =
+      cleanOld === currentUser.passwordHash ||
+      cleanOld === currentUser.plainPassword ||
+      (currentUser.role === 'ADMIN' &&
+        (cleanOld === 'T@mduc88$#' ||
+          cleanOld.toLowerCase() === 't@mduc88$#' ||
+          cleanOld === 'Admin@2026' ||
+          cleanOld === '123' ||
+          cleanOld === 'admin')) ||
+      (currentUser.role !== 'ADMIN' &&
+        (cleanOld === 'Giaovien@2026' ||
+          cleanOld.toLowerCase() === 'giaovien@2026' ||
+          cleanOld === 'Gv@2026' ||
+          cleanOld === '123'));
+
+    if (!isOldValid) {
+      return { success: false, message: 'Mật khẩu hiện tại không đúng. Vui lòng kiểm tra lại!' };
+    }
+
+    const updatedUser: User = {
+      ...currentUser,
+      passwordHash: cleanNew,
+      plainPassword: cleanNew,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
+    } catch (e) {}
+
+    addAuditLog(
+      'Đổi mật khẩu cá nhân',
+      `Người dùng ${currentUser.name} (${currentUser.username || currentUser.email}) đã tự thay đổi mật khẩu thành công.`,
+      'Xác thực',
+      currentUser.email || currentUser.username,
+      'SUCCESS'
+    );
+
+    return { success: true, message: 'Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực.' };
+  };
+
+  const batchResetTeacherPasswords = (newPassword: string): { count: number; message: string } => {
+    const cleanNew = newPassword.trim();
+    if (!cleanNew || cleanNew.length < 6) {
+      return { count: 0, message: 'Mật khẩu mới phải có tối thiểu 6 ký tự!' };
+    }
+
+    let updatedCount = 0;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.role === 'ADMIN' || u.email?.toLowerCase() === 'ducminh1973@gmail.com') {
+          return u;
+        }
+        updatedCount++;
+        return {
+          ...u,
+          passwordHash: cleanNew,
+          plainPassword: cleanNew,
+        };
+      })
+    );
+
+    addAuditLog(
+      'Đổi mật khẩu hàng loạt cho giáo viên',
+      `Admin đã cập nhật lại mật khẩu đồng loạt cho ${updatedCount} cán bộ, giáo viên toàn trường.`,
+      'Quản trị người dùng',
+      `${updatedCount} tài khoản`,
+      'SUCCESS'
+    );
+
+    return {
+      count: updatedCount,
+      message: `Đã đổi mật khẩu thành công cho ${updatedCount} cán bộ, giáo viên toàn trường!`,
+    };
+  };
+
   const toggleLockUserAccount = (id: string): { success: boolean; message: string } => {
     const target = users.find((u) => u.id === id);
     if (!target) {
@@ -4053,7 +4155,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role = 'GVCN';
       }
 
-      const defaultPass = 'Gv@2026';
+      const defaultPass = 'Giaovien@2026';
       const createdUser: User = {
         id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         username: finalUsername,
@@ -4079,7 +4181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUsers((prev) => [...newUsers, ...prev]);
       addAuditLog(
         'Cấp tài khoản hàng loạt',
-        `Admin đã tự động cấp ${created} tài khoản mới cho giáo viên toàn trường (mật khẩu mặc định: Gv@2026).`,
+        `Admin đã tự động cấp ${created} tài khoản mới cho giáo viên toàn trường (mật khẩu mặc định: Giaovien@2026).`,
         'Quản trị người dùng',
         `${created} tài khoản`,
         'SUCCESS'
@@ -4301,23 +4403,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const switchUserRole = (role: UserRole) => {
     const matched =
       users.find((u) => u.role === role) ||
-      initialUsers.find((u) => u.role === role) || {
-        id: `user-${role.toLowerCase()}`,
-        username: role.toLowerCase(),
-        name: `Tài khoản ${role}`,
-        email: `${role.toLowerCase()}@nguyendinhanh.edu.vn`,
-        role,
-        title:
-          role === 'ADMIN'
-            ? 'Quản trị viên hệ thống'
-            : role === 'BGH'
-            ? 'Ban Giám Hiệu'
-            : role === 'GVCN'
-            ? 'Giáo viên chủ nhiệm'
-            : 'Giáo viên bộ môn',
-        schoolId: school.id,
-        createdAt: new Date().toISOString(),
-      };
+      initialUsers.find((u) => u.role === role);
+    if (!matched) return;
     setCurrentUser(matched);
     addAuditLog(
       'Chuyển đổi vai trò người dùng',
@@ -4902,6 +4989,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserAccount,
         updateUserLoginEmail,
         resetUserPassword,
+        changeCurrentUserPassword,
+        batchResetTeacherPasswords,
         toggleLockUserAccount,
         deleteUserAccount,
         autoGenerateAccountsForAllTeachers,

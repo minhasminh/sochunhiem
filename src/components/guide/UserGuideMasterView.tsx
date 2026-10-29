@@ -42,13 +42,13 @@ export const UserGuideMasterView: React.FC = () => {
       icon: KeyRound,
       summary: 'Truy cập hệ thống Sổ chủ nhiệm điện tử và xác thực phân quyền.',
       steps: [
-        'Truy cập trang đăng nhập bằng tài khoản được cấp (email hoặc tên người dùng).',
-        'Tài khoản Demo thử nghiệm: `leducminh` (GVCN), `phanducquy` (BGH), `admin` (Quản trị), mật khẩu mặc định: `123`.',
+        'Truy cập hệ thống bằng địa chỉ email chính thức của cán bộ, giáo viên đã được phân quyền.',
+        'Mật khẩu ban đầu: Toàn bộ Giáo viên và Ban Giám Hiệu là `Giaovien@2026`, Quản trị viên hệ thống là `T@mduc88$#`.',
         'Sau khi đăng nhập thành công, hệ thống tự động tải quyền hạn tương ứng theo vai trò (ADMIN, BGH, GVCN, GIÁO VIÊN).',
       ],
       tips: [
         'Nếu bạn là GVCN, bạn chỉ được phép thêm/sửa dữ liệu ở lớp do bạn phụ trách.',
-        'Có thể chuyển đổi nhanh vai trò kiểm thử trong mục Cài đặt hệ thống.',
+        'Giáo viên có thể tự đổi mật khẩu tài khoản bất cứ lúc nào tại menu góc trên bên phải hoặc trong Cài đặt tài khoản.',
       ],
     },
     {

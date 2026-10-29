@@ -35,10 +35,12 @@ import { ClassPromotionMasterView } from '../promotion/ClassPromotionMasterView'
 import { DataIntegrityCheckerView } from '../integrity/DataIntegrityCheckerView';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { TeacherAccountManagementTab } from '../teachers/TeacherAccountManagementTab';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 type SettingsTab = 'account-roles' | 'backup-restore' | 'audit-logs' | 'class-promotion' | 'data-integrity';
 
 export const Stage1SettingsView: React.FC = () => {
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const {
     currentUser,
     logout,
@@ -318,82 +320,97 @@ export const Stage1SettingsView: React.FC = () => {
                       : 'Giáo viên bộ môn, xem và nhập điểm môn học'}
                   </span>
                 </div>
-              </div>
-            </div>
-
-            {/* Quick Role Switcher for Testing (Requirement 6) */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Shield className="w-4 h-4 text-indigo-600" />
-                Kiểm thử phân quyền vai trò (Role Switcher)
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Nhấn vào vai trò bên dưới để kiểm thử ngay lập tức các chính sách bảo vệ dữ liệu và giới hạn quyền truy cập:
-              </p>
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                {(['ADMIN', 'BGH', 'GVCN', 'GIÁO VIÊN'] as UserRole[]).map((role) => (
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-slate-500">Bảo mật tài khoản:</span>
                   <button
-                    key={role}
-                    onClick={() => {
-                      switchUserRole(role);
-                      showMsg(`Đã chuyển sang vai trò ${role} thành công!`);
-                    }}
-                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                      currentUser?.role === role
-                        ? 'bg-sky-50 border-sky-400 text-sky-950 font-bold shadow-xs'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold'
-                    }`}
+                    type="button"
+                    onClick={() => setIsChangePasswordOpen(true)}
+                    className="px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-colors text-xs"
                   >
-                    <div className="flex items-center justify-between text-xs">
-                      <span>{role}</span>
-                      {currentUser?.role === role && <Check className="w-4 h-4 text-sky-600" />}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1 font-normal">
-                      {role === 'ADMIN'
-                        ? 'Quản trị viên'
-                        : role === 'BGH'
-                        ? 'Ban Giám Hiệu'
-                        : role === 'GVCN'
-                        ? 'Giáo viên chủ nhiệm 7/1'
-                        : 'Giáo viên bộ môn'}
-                    </div>
+                    <KeyRound className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Đổi mật khẩu tài khoản</span>
                   </button>
-                ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Quản lý Cấu trúc Tài khoản theo tiêu chuẩn người dùng */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <KeyRound className="w-4.5 h-4.5 text-indigo-600" />
-                  Quản lý Tài khoản Cán bộ - Giáo viên
+            {/* Quick Role Switcher for Testing (CHỈ HIỂN THỊ VỚI QUẢN TRỊ VIÊN) */}
+            {isAdmin && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Shield className="w-4 h-4 text-indigo-600" />
+                  Kiểm thử phân quyền vai trò (Role Switcher)
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Cấu trúc quản lý chuẩn: Họ và tên, Email đăng nhập, Tổ chuyên môn, Bộ môn, Vai trò, Trạng thái tài khoản và 5 công cụ thao tác nhanh.
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Nhấn vào vai trò bên dưới để kiểm thử ngay lập tức các chính sách bảo vệ dữ liệu và giới hạn quyền truy cập:
                 </p>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const res = autoGenerateAccountsForAllTeachers();
-                    showMsg(res.message);
-                  }}
-                  className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="Tự động kiểm tra và cấp quyền đăng nhập bằng email cho toàn bộ giáo viên"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Đồng bộ cấp quyền Email
-                </button>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  {(['ADMIN', 'BGH', 'GVCN', 'GIÁO VIÊN'] as UserRole[]).map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => {
+                        switchUserRole(role);
+                        showMsg(`Đã chuyển sang vai trò ${role} thành công!`);
+                      }}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        currentUser?.role === role
+                          ? 'bg-sky-50 border-sky-400 text-sky-950 font-bold shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span>{role}</span>
+                        {currentUser?.role === role && <Check className="w-4 h-4 text-sky-600" />}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1 font-normal">
+                        {role === 'ADMIN'
+                          ? 'Quản trị viên'
+                          : role === 'BGH'
+                          ? 'Ban Giám Hiệu'
+                          : role === 'GVCN'
+                          ? 'Giáo viên chủ nhiệm 7/1'
+                          : 'Giáo viên bộ môn'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            <TeacherAccountManagementTab />
+            )}
           </div>
+
+          {/* Quản lý Cấu trúc Tài khoản theo tiêu chuẩn người dùng (CHỈ HIỂN THỊ VỚI ADMIN) */}
+          {isAdmin && (
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <KeyRound className="w-4.5 h-4.5 text-indigo-600" />
+                    Quản lý Tài khoản Cán bộ - Giáo viên
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Cấu trúc quản lý chuẩn: Họ và tên, Email đăng nhập, Tổ chuyên môn, Bộ môn, Vai trò, Trạng thái tài khoản và 5 công cụ thao tác nhanh.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const res = autoGenerateAccountsForAllTeachers();
+                      showMsg(res.message);
+                    }}
+                    className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Tự động kiểm tra và cấp quyền đăng nhập bằng email cho toàn bộ giáo viên"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Đồng bộ cấp quyền Email
+                  </button>
+                </div>
+              </div>
+
+              <TeacherAccountManagementTab />
+            </div>
+          )}
 
           {/* Database Management for ADMIN ONLY */}
           {isAdmin ? (
@@ -779,6 +796,12 @@ export const Stage1SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal Đổi mật khẩu cá nhân */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 };

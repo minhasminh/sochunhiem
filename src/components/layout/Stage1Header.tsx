@@ -15,8 +15,10 @@ import {
   Sparkles,
   ClipboardList,
   Layers,
+  KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 export const Stage1Header: React.FC = () => {
   const {
@@ -37,6 +39,7 @@ export const Stage1Header: React.FC = () => {
   } = useApp();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const activeYearClasses = classes.filter((c) => c.schoolYearId === currentSchoolYear.id);
 
@@ -349,13 +352,24 @@ export const Stage1Header: React.FC = () => {
                   <span>Hướng dẫn sử dụng</span>
                 </button>
 
-                <div className="pt-1 border-t border-slate-100">
+                <div className="pt-1 border-t border-slate-100 space-y-1">
+                  <button
+                    onClick={() => {
+                      setShowUserDropdown(false);
+                      setIsChangePasswordOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-sky-700 hover:bg-sky-50 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <KeyRound className="w-4 h-4 text-sky-600" />
+                    <span>Đổi mật khẩu tài khoản</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       setShowUserDropdown(false);
                       logout();
                     }}
-                    className="w-full text-left px-3 py-2 rounded-xl text-rose-700 hover:bg-rose-50 font-semibold flex items-center gap-2 cursor-pointer"
+                    className="w-full text-left px-3 py-2 rounded-xl text-rose-700 hover:bg-rose-50 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Đăng xuất</span>
@@ -366,6 +380,12 @@ export const Stage1Header: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Đổi mật khẩu cá nhân cho Giáo viên / BGH / Admin */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </header>
   );
 };

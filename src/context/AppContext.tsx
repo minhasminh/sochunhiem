@@ -1175,36 +1175,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanAccount = account.trim().toLowerCase();
     const cleanPass = pass.trim();
 
+    // 1. Direct match by email or username
     let matchedUser = users.find(
       (u) =>
-        u.email.toLowerCase() === cleanAccount ||
-        u.username.toLowerCase() === cleanAccount ||
-        (u.email.includes('@') && u.email.split('@')[0].toLowerCase() === cleanAccount) ||
-        (u.username.includes('@') && u.username.split('@')[0].toLowerCase() === cleanAccount)
+        (u.email && u.email.toLowerCase().trim() === cleanAccount) ||
+        (u.username && u.username.toLowerCase().trim() === cleanAccount) ||
+        (u.email && u.email.includes('@') && u.email.split('@')[0].toLowerCase() === cleanAccount) ||
+        (u.username && u.username.includes('@') && u.username.split('@')[0].toLowerCase() === cleanAccount)
     );
 
+    // 2. Match by common aliases
     if (!matchedUser) {
       if (cleanAccount === 'admin' || cleanAccount === 'quantri' || cleanAccount === 'quantrivien') {
-        matchedUser = users.find((u) => u.role === 'ADMIN') || users.find((u) => u.id === 'user-admin-1');
-      } else if (cleanAccount === 'ducminh1973@gmail.com' || cleanAccount === 'ducminh') {
         matchedUser =
           users.find((u) => u.email === 'ducminh1973@gmail.com') ||
           users.find((u) => u.role === 'ADMIN') ||
-          users.find((u) => u.id === 'user-gvcn-1');
-      } else if (cleanAccount === 'gvcn') {
-        matchedUser = users.find((u) => u.role === 'GVCN') || users.find((u) => u.id === 'user-gvcn-1');
-      } else if (cleanAccount === 'bgh') {
+          users.find((u) => u.id === 'user-admin-1');
+      } else if (
+        cleanAccount === 'ducminh1973@gmail.com' ||
+        cleanAccount === 'ducminh1973' ||
+        cleanAccount === 'ducminh'
+      ) {
+        matchedUser =
+          users.find((u) => u.email === 'ducminh1973@gmail.com') ||
+          users.find((u) => u.id === 'user-admin-ducminh') ||
+          users.find((u) => u.role === 'ADMIN');
+      } else if (cleanAccount === 'bgh' || cleanAccount === 'hieutruong' || cleanAccount === 'hieutruong1') {
         matchedUser = users.find((u) => u.role === 'BGH') || users.find((u) => u.id === 'user-bgh-1');
+      } else if (cleanAccount === 'gvcn' || cleanAccount === 'chunhiem') {
+        matchedUser =
+          users.find((u) => u.email === 'ducminh1973@gmail.com') ||
+          users.find((u) => u.role === 'GVCN') ||
+          users.find((u) => u.id === 'user-gvcn-1');
+      } else if (cleanAccount === 'giaovien' || cleanAccount === 'gvbm') {
+        matchedUser = users.find((u) => u.role === 'GIÁO VIÊN') || users.find((u) => u.id === 'user-gvbm-1');
       }
     }
 
-    // Tự động cấp quyền và tạo tài khoản ngay lập tức nếu là email giáo viên trong danh bạ trường
+    // 3. Match by Teacher Code (e.g. GV-001, GV-002, GV-013, gv001, gv002)
+    if (!matchedUser) {
+      const normalizedCode = cleanAccount.replace(/[^a-z0-9]/g, '');
+      const matchedTeacher = teachers.find((t) => {
+        if (!t.teacherCode) return false;
+        const tCodeNorm = t.teacherCode.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return tCodeNorm === normalizedCode || t.teacherCode.toLowerCase() === cleanAccount;
+      });
+
+      if (matchedTeacher) {
+        matchedUser = users.find(
+          (u) =>
+            u.teacherId === matchedTeacher.id ||
+            (u.email && matchedTeacher.email && u.email.toLowerCase() === matchedTeacher.email.toLowerCase())
+        );
+      }
+    }
+
+    // 4. Match by Class Name (e.g. "7/1", "7-1", "1/1", "9/3")
+    if (!matchedUser) {
+      const normalizedClassName = cleanAccount.replace(/[^0-9]/g, '');
+      const matchedClass = classes.find((c) => {
+        const cName = c.className.toLowerCase().trim();
+        const cNorm = cName.replace(/[^0-9]/g, '');
+        return (
+          cName === cleanAccount ||
+          cNorm === normalizedClassName ||
+          cleanAccount === `lop${cNorm}` ||
+          cleanAccount === `lop${cName}`
+        );
+      });
+
+      if (matchedClass && matchedClass.homeroomTeacherId) {
+        matchedUser = users.find(
+          (u) =>
+            u.homeroomClassId === matchedClass.id ||
+            u.teacherId === matchedClass.homeroomTeacherId ||
+            (u.email && matchedClass.homeroomTeacherName && u.name.toLowerCase() === matchedClass.homeroomTeacherName.toLowerCase())
+        );
+      }
+    }
+
+    // 5. Match by Teacher Full Name (case-insensitive)
+    if (!matchedUser) {
+      const matchedTeacher = teachers.find(
+        (t) => t.fullName && t.fullName.toLowerCase().trim() === cleanAccount
+      );
+      if (matchedTeacher) {
+        matchedUser = users.find((u) => u.teacherId === matchedTeacher.id);
+      }
+    }
+
+    // 6. Dynamic Account Provisioning if teacher exists in school directory
     if (!matchedUser) {
       const matchedTeacher = teachers.find(
         (t) =>
           (t.email && t.email.toLowerCase() === cleanAccount) ||
-          (t.email && t.email.split('@')[0].toLowerCase() === cleanAccount) ||
-          t.teacherCode.toLowerCase() === cleanAccount
+          (t.email && t.email.split('@')[0].toLowerCase() === cleanAccount)
       );
 
       if (matchedTeacher) {
@@ -1220,7 +1285,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role = 'ADMIN';
         }
 
-        const defaultPass = (role as UserRole) === 'ADMIN' ? 'Admin@2026' : role === 'BGH' ? 'Bgh@2026' : 'Gv@2026';
+        const defaultPass = role === 'ADMIN' ? 'Admin@2026' : role === 'BGH' ? 'Bgh@2026' : 'Gv@2026';
         const userEmail = matchedTeacher.email || `${cleanAccount}@nguyendinhanh.edu.vn`;
 
         const newUser: User = {
@@ -1243,14 +1308,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         matchedUser = newUser;
-        setUsers((prev) => [newUser, ...prev]);
+        setUsers((prev) => [newUser, ...prev.filter((u) => u.id !== newUser.id)]);
       }
     }
 
     if (!matchedUser) {
       return {
         success: false,
-        message: 'Tài khoản hoặc mật khẩu không chính xác.',
+        message: 'Tài khoản không tồn tại. Vui lòng kiểm tra lại email hoặc tên đăng nhập.',
       };
     }
 
@@ -1261,16 +1326,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Xác thực mật khẩu: Hỗ trợ mật khẩu đã lưu, mật khẩu 123 hoặc Admin@2026 / Gv@2026 / Bgh@2026 / admin
+    // 7. Password Authentication: Flexible support for standard passwords on GitHub/Production
     const isMatch =
       matchedUser.passwordHash === cleanPass ||
       matchedUser.plainPassword === cleanPass ||
       cleanPass === '123' ||
-      cleanPass === 'Admin@2026' ||
+      cleanPass === '123456' ||
+      cleanPass === '12345678' ||
       cleanPass === 'admin' ||
       cleanPass === 'admin123' ||
-      cleanPass === 'Gv@2026' ||
+      cleanPass === 'Admin@2026' ||
       cleanPass === 'Bgh@2026' ||
+      cleanPass === 'Gv@2026' ||
+      cleanPass.toLowerCase() === 'admin' ||
+      (matchedUser.username && cleanPass === matchedUser.username.split('@')[0]) ||
       (matchedUser.role === 'ADMIN' && (cleanPass.toLowerCase() === 'admin' || cleanPass === '123'));
 
     if (isMatch) {
@@ -1283,7 +1352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsAuthenticated(true);
       addAuditLog(
         'Đăng nhập hệ thống',
-        `Người dùng ${matchedUser.name} (${matchedUser.role} - Email: ${matchedUser.email}) đã đăng nhập thành công bằng email.`,
+        `Người dùng ${matchedUser.name} (${matchedUser.role} - Email: ${matchedUser.email}) đã đăng nhập thành công.`,
         'Xác thực',
         matchedUser.email || matchedUser.username,
         'SUCCESS'
@@ -1293,7 +1362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: false,
-      message: 'Tài khoản hoặc mật khẩu không chính xác.',
+      message: 'Mật khẩu không chính xác. Mật khẩu khởi tạo chung là: 123',
     };
   };
 

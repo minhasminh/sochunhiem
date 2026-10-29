@@ -16,6 +16,8 @@ import {
   ClipboardList,
   Layers,
   KeyRound,
+  Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
@@ -36,12 +38,22 @@ export const Stage1Header: React.FC = () => {
     setActiveMenu,
     isCurrentSchoolYearLocked,
     canEditCurrentClass,
+    syncStatus,
+    lastSyncedTime,
+    forceSyncWithServer,
   } = useApp();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const activeYearClasses = classes.filter((c) => c.schoolYearId === currentSchoolYear.id);
+
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    await forceSyncWithServer();
+    setTimeout(() => setIsManualSyncing(false), 500);
+  };
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
@@ -68,6 +80,32 @@ export const Stage1Header: React.FC = () => {
                 <span className="hidden md:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   Vận hành chính thức
                 </span>
+                {/* Cloud & Multi-Device Sync Indicator */}
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  title={`Đồng bộ đa thiết bị (Lần cuối: ${lastSyncedTime}). Bấm để đồng bộ ngay.`}
+                  className={`hidden xl:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer ${
+                    syncStatus === 'syncing' || isManualSyncing
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : syncStatus === 'offline'
+                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                      : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200'
+                  }`}
+                >
+                  {syncStatus === 'syncing' || isManualSyncing ? (
+                    <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
+                  ) : (
+                    <Cloud className="w-3 h-3 text-sky-600" />
+                  )}
+                  <span>
+                    {syncStatus === 'syncing' || isManualSyncing
+                      ? 'Đang đồng bộ...'
+                      : syncStatus === 'offline'
+                      ? 'Ngoại tuyến'
+                      : 'Đồng bộ máy chủ'}
+                  </span>
+                </button>
                 {isCurrentSchoolYearLocked && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
                     🔒 NĂM HỌC ĐÃ KHÓA

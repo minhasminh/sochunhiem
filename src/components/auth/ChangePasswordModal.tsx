@@ -38,7 +38,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -66,8 +66,8 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = changeCurrentUserPassword(currentPassword, newPassword);
+    try {
+      const res = await changeCurrentUserPassword(currentPassword, newPassword);
       setIsLoading(false);
 
       if (res.success) {
@@ -83,7 +83,10 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       } else {
         setErrorMessage(res.message);
       }
-    }, 250);
+    } catch (e: any) {
+      setIsLoading(false);
+      setErrorMessage(e?.message || 'Lỗi khi gửi yêu cầu đổi mật khẩu lên máy chủ.');
+    }
   };
 
   const handleClose = () => {

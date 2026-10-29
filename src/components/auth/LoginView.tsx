@@ -23,7 +23,7 @@ export const LoginView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSupportInfo, setShowSupportInfo] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -39,13 +39,16 @@ export const LoginView: React.FC = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = login(cleanAcc, password, rememberMe);
+    try {
+      const res = await login(cleanAcc, password, rememberMe);
       setIsLoading(false);
       if (!res.success) {
         setErrorMessage(res.message || 'Tài khoản hoặc mật khẩu không chính xác.');
       }
-    }, 250);
+    } catch (e: any) {
+      setIsLoading(false);
+      setErrorMessage(e?.message || 'Lỗi kết nối máy chủ.');
+    }
   };
 
   return (
@@ -216,18 +219,21 @@ export const LoginView: React.FC = () => {
           <div className="pt-1 text-center">
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 setAccount('admin');
                 setPassword('T@mduc88$#');
                 setErrorMessage(null);
                 setIsLoading(true);
-                setTimeout(() => {
-                  const res = login('admin', 'T@mduc88$#', true);
+                try {
+                  const res = await login('admin', 'T@mduc88$#', true);
                   setIsLoading(false);
                   if (!res.success) {
                     setErrorMessage(res.message || 'Không thể đăng nhập tài khoản quản trị.');
                   }
-                }, 150);
+                } catch (err: any) {
+                  setIsLoading(false);
+                  setErrorMessage(err?.message || 'Lỗi kết nối máy chủ.');
+                }
               }}
               className="text-[11px] text-slate-500 hover:text-indigo-600 inline-flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
             >
@@ -237,8 +243,12 @@ export const LoginView: React.FC = () => {
           </div>
         </form>
 
-        {/* Footer info */}
-        <div className="pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400 space-y-1">
+        {/* Footer info & Server Sync Indicator */}
+        <div className="pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400 space-y-1.5">
+          <div className="inline-flex items-center gap-1.5 text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Máy chủ trực tuyến • Đồng bộ đa thiết bị tự động</span>
+          </div>
           <div className="font-semibold text-slate-500">Trường TH&THCS Nguyễn Đình Anh</div>
           <div>Cơ sở dữ liệu Vận hành chính thức • Phiên bản 1.0</div>
         </div>

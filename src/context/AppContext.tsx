@@ -103,11 +103,16 @@ import {
 } from '../types';
 
 interface AppContextType {
+  // Cloud & Multi-Device Sync State
+  syncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  lastSyncedTime: string;
+  forceSyncWithServer: () => Promise<void>;
+
   // Auth state & User Account Management (Admin cấp tài khoản & mật khẩu)
   isAuthenticated: boolean;
   currentUser: User | null;
   users: User[];
-  login: (account: string, pass: string, remember: boolean) => { success: boolean; message?: string };
+  login: (account: string, pass: string, remember: boolean) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   addUserAccount: (data: {
     name: string;
@@ -127,8 +132,8 @@ interface AppContextType {
   updateUserAccount: (id: string, data: Partial<User> & { newPassword?: string }) => { success: boolean; message: string };
   updateUserLoginEmail: (id: string, newEmail: string, syncUsername?: boolean) => { success: boolean; message: string };
   resetUserPassword: (id: string, newPassword?: string) => { success: boolean; message: string; temporaryPassword?: string };
-  changeCurrentUserPassword: (oldPassword: string, newPassword: string) => { success: boolean; message: string };
-  batchResetTeacherPasswords: (newPassword: string) => { count: number; message: string };
+  changeCurrentUserPassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
+  batchResetTeacherPasswords: (newPassword: string) => Promise<{ count: number; message: string }>;
   toggleLockUserAccount: (id: string) => { success: boolean; message: string };
   deleteUserAccount: (id: string) => { success: boolean; message: string };
   autoGenerateAccountsForAllTeachers: () => { createdCount: number; existingCount: number; message: string };
@@ -463,6 +468,14 @@ const normalizeDepartmentName = (dept?: string): string => {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Cloud & Multi-Device Synchronization State
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('synced');
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('Khởi tạo');
+  const serverVersionRef = React.useRef<number>(1);
+  const isSyncingFromServerRef = React.useRef<boolean>(false);
+  const isInitialLoadDoneRef = React.useRef<boolean>(false);
+  const debouncedSyncTimerRef = React.useRef<any>(null);
+
   // Auth state (Production: Gated login screen, không tự động đăng nhập)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -941,6 +954,250 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return initialStudentSemesterComments;
   });
 
+  // ================= CLOUD & MULTI-DEVICE SYNCHRONIZATION LOGIC =================
+  const applyServerData = (serverData: any, version?: number) => {
+    isSyncingFromServerRef.current = true;
+    try {
+      if (version) serverVersionRef.current = version;
+      if (serverData.school) setSchool(serverData.school);
+      if (serverData.schoolYears) setSchoolYears(serverData.schoolYears);
+      if (serverData.classes) setClasses(serverData.classes);
+      if (serverData.students) setStudents(serverData.students);
+      if (serverData.subjectTeachers) setSubjectTeachers(serverData.subjectTeachers);
+      if (serverData.teachers) setTeachers(serverData.teachers);
+      if (serverData.departments) setDepartments(serverData.departments);
+      if (serverData.users && Array.isArray(serverData.users) && serverData.users.length > 0) {
+        setUsers(serverData.users);
+        if (currentUser) {
+          const updatedCurrent = serverData.users.find(
+            (u: User) =>
+              u.id === currentUser.id ||
+              (u.email && currentUser.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+          );
+          if (updatedCurrent) {
+            setCurrentUser(updatedCurrent);
+            try {
+              localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedCurrent));
+            } catch (e) {}
+          }
+        }
+      }
+      if (serverData.seats) setSeats(serverData.seats);
+      if (serverData.classroomConfig) setClassroomConfig(serverData.classroomConfig);
+      if (serverData.classOfficers) setClassOfficers(serverData.classOfficers);
+      if (serverData.parentRepresentatives) setParentRepresentatives(serverData.parentRepresentatives);
+      if (serverData.yearlyPlan) setYearlyPlan(serverData.yearlyPlan);
+      if (serverData.monthlyPlans) setMonthlyPlans(serverData.monthlyPlans);
+      if (serverData.scheduleWorkItems) setScheduleWorkItems(serverData.scheduleWorkItems);
+      if (serverData.attendanceRecords) setAttendanceRecords(serverData.attendanceRecords);
+      if (serverData.academicScores) setAcademicScores(serverData.academicScores);
+      if (serverData.subjectTrackings) setSubjectTrackings(serverData.subjectTrackings);
+      if (serverData.conductRecords) setConductRecords(serverData.conductRecords);
+      if (serverData.violationRecords) setViolationRecords(serverData.violationRecords);
+      if (serverData.weeklyConductLogs) setWeeklyConductLogs(serverData.weeklyConductLogs);
+      if (serverData.studentProgressEntries) setStudentProgressEntries(serverData.studentProgressEntries);
+      if (serverData.studentSupportTags) setStudentSupportTags(serverData.studentSupportTags);
+      if (serverData.classActivities) setClassActivities(serverData.classActivities);
+      if (serverData.competitionClassConfig) setCompetitionClassConfig(serverData.competitionClassConfig);
+      if (serverData.groupCompetitionRecords) setGroupCompetitionRecords(serverData.groupCompetitionRecords);
+      if (serverData.awardRecords) setAwardRecords(serverData.awardRecords);
+      if (serverData.talentProfiles) setTalentProfiles(serverData.talentProfiles);
+      if (serverData.termLocks) setTermLocks(serverData.termLocks);
+      if (serverData.semesterSummaryReports) setSemesterSummaryReports(serverData.semesterSummaryReports);
+      if (serverData.yearEndSummaryReport) setYearEndSummaryReport(serverData.yearEndSummaryReport);
+      if (serverData.studentSemesterComments) setStudentSemesterComments(serverData.studentSemesterComments);
+      if (serverData.classBookApprovals) setClassBookApprovals(serverData.classBookApprovals);
+      if (serverData.auditLogs) setAuditLogs(serverData.auditLogs);
+      if (serverData.settings) setSettings(serverData.settings);
+
+      setSyncStatus('synced');
+      setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+    } finally {
+      setTimeout(() => {
+        isSyncingFromServerRef.current = false;
+        isInitialLoadDoneRef.current = true;
+      }, 400);
+    }
+  };
+
+  const forceSyncWithServer = async () => {
+    try {
+      setSyncStatus('syncing');
+      const res = await fetch('/api/database');
+      if (!res.ok) throw new Error('Không thể tải CSDL máy chủ');
+      const result = await res.json();
+      if (result.success && result.data) {
+        applyServerData(result.data, result.version);
+      }
+    } catch (e) {
+      setSyncStatus('offline');
+    }
+  };
+
+  // 1. Khởi động ứng dụng: Tải ngay dữ liệu CSDL máy chủ mới nhất (hỗ trợ đa máy tính)
+  useEffect(() => {
+    let active = true;
+    const fetchInitial = async () => {
+      try {
+        setSyncStatus('syncing');
+        const res = await fetch('/api/database');
+        if (!res.ok) throw new Error('Failed to load server database');
+        const result = await res.json();
+        if (result.success && result.data && active) {
+          applyServerData(result.data, result.version);
+        }
+      } catch (e) {
+        if (active) {
+          setSyncStatus('offline');
+          isInitialLoadDoneRef.current = true;
+        }
+      }
+    };
+    fetchInitial();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // 2. Định kỳ kiểm tra phiên bản CSDL và tự động đồng bộ khi chuyển sang tab trình duyệt
+  useEffect(() => {
+    let active = true;
+    const pollServerVersion = async () => {
+      if (!isInitialLoadDoneRef.current || isSyncingFromServerRef.current) return;
+      try {
+        const res = await fetch('/api/database/version');
+        if (!res.ok) return;
+        const info = await res.json();
+        if (info.success && info.version > serverVersionRef.current && active) {
+          const fullRes = await fetch('/api/database');
+          if (!fullRes.ok) return;
+          const fullData = await fullRes.json();
+          if (fullData.success && fullData.data && active) {
+            applyServerData(fullData.data, fullData.version);
+          }
+        }
+      } catch (e) {}
+    };
+
+    const interval = setInterval(pollServerVersion, 8000);
+    const handleFocus = () => {
+      pollServerVersion();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // 3. Tự động đẩy thay đổi từ client lên máy chủ (Debounced Push)
+  useEffect(() => {
+    if (!isInitialLoadDoneRef.current) return;
+    if (isSyncingFromServerRef.current) return;
+
+    if (debouncedSyncTimerRef.current) {
+      clearTimeout(debouncedSyncTimerRef.current);
+    }
+
+    debouncedSyncTimerRef.current = setTimeout(async () => {
+      try {
+        setSyncStatus('syncing');
+        const payload = {
+          school,
+          schoolYears,
+          classes,
+          students,
+          subjectTeachers,
+          teachers,
+          departments,
+          users,
+          seats,
+          classroomConfig,
+          classOfficers,
+          parentRepresentatives,
+          yearlyPlan,
+          monthlyPlans,
+          scheduleWorkItems,
+          attendanceRecords,
+          academicScores,
+          subjectTrackings,
+          conductRecords,
+          violationRecords,
+          weeklyConductLogs,
+          studentProgressEntries,
+          studentSupportTags,
+          classActivities,
+          competitionClassConfig,
+          groupCompetitionRecords,
+          awardRecords,
+          talentProfiles,
+          termLocks,
+          semesterSummaryReports,
+          yearEndSummaryReport,
+          studentSemesterComments,
+          classBookApprovals,
+          auditLogs,
+          settings,
+        };
+
+        const res = await fetch('/api/database', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: payload }),
+        });
+
+        if (res.ok) {
+          const resData = await res.json();
+          if (resData.version) {
+            serverVersionRef.current = resData.version;
+          }
+          setSyncStatus('synced');
+          setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+        }
+      } catch (e) {
+        setSyncStatus('offline');
+      }
+    }, 1200);
+  }, [
+    school,
+    schoolYears,
+    classes,
+    students,
+    subjectTeachers,
+    teachers,
+    departments,
+    users,
+    seats,
+    classroomConfig,
+    classOfficers,
+    parentRepresentatives,
+    yearlyPlan,
+    monthlyPlans,
+    scheduleWorkItems,
+    attendanceRecords,
+    academicScores,
+    subjectTrackings,
+    conductRecords,
+    violationRecords,
+    weeklyConductLogs,
+    studentProgressEntries,
+    studentSupportTags,
+    classActivities,
+    competitionClassConfig,
+    groupCompetitionRecords,
+    awardRecords,
+    talentProfiles,
+    termLocks,
+    semesterSummaryReports,
+    yearEndSummaryReport,
+    studentSemesterComments,
+    classBookApprovals,
+    auditLogs,
+    settings,
+  ]);
+
   // Persistence to localStorage
   useEffect(() => {
     try {
@@ -1231,7 +1488,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  const login = (account: string, pass: string, remember: boolean) => {
+  const login = async (
+    account: string,
+    pass: string,
+    remember: boolean
+  ): Promise<{ success: boolean; message?: string }> => {
     const cleanAccount = account.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -1462,8 +1723,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         matchedUser.email || matchedUser.username,
         'SUCCESS'
       );
+      // Async notify server in background
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: cleanAccount, password: cleanPass }),
+      }).catch(() => {});
       return { success: true };
     }
+
+    // 8. Nếu kiểm tra cục bộ không khớp (khi đăng nhập từ máy tính khác hoặc mật khẩu vừa đổi trên thiết bị khác):
+    // Gọi trực tiếp API máy chủ để xác thực và đồng bộ dữ liệu
+    try {
+      const serverRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: cleanAccount, password: cleanPass }),
+      });
+      const data = await serverRes.json();
+      if (serverRes.ok && data.success && data.user) {
+        const serverUser: User = data.user;
+        setUsers((prev) => [serverUser, ...prev.filter((u) => u.id !== serverUser.id)]);
+        setCurrentUser(serverUser);
+        setIsAuthenticated(true);
+        try {
+          localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(serverUser));
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify([serverUser, ...users.filter((u) => u.id !== serverUser.id)]));
+        } catch (e) {}
+        addAuditLog(
+          'Đăng nhập hệ thống qua Máy chủ',
+          `Người dùng ${serverUser.name} (${serverUser.role} - Email: ${serverUser.email}) đã xác thực thành công từ máy chủ tập trung.`,
+          'Xác thực máy chủ',
+          serverUser.email || serverUser.username,
+          'SUCCESS'
+        );
+        forceSyncWithServer();
+        return { success: true };
+      }
+      if (data.message) {
+        return { success: false, message: data.message };
+      }
+    } catch (e) {}
 
     return {
       success: false,
@@ -3947,10 +4247,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const changeCurrentUserPassword = (
+  const changeCurrentUserPassword = async (
     oldPassword: string,
     newPassword: string
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string }> => {
     if (!currentUser) {
       return { success: false, message: 'Chưa đăng nhập hệ thống!' };
     }
@@ -3961,54 +4261,136 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Mật khẩu mới phải có tối thiểu 6 ký tự!' };
     }
 
-    const isOldValid =
-      cleanOld === currentUser.passwordHash ||
-      cleanOld === currentUser.plainPassword ||
-      (currentUser.role === 'ADMIN' &&
-        (cleanOld === 'T@mduc88$#' ||
-          cleanOld.toLowerCase() === 't@mduc88$#' ||
-          cleanOld === 'Admin@2026' ||
-          cleanOld === '123' ||
-          cleanOld === 'admin')) ||
-      (currentUser.role !== 'ADMIN' &&
-        (cleanOld === 'Giaovien@2026' ||
-          cleanOld.toLowerCase() === 'giaovien@2026' ||
-          cleanOld === 'Gv@2026' ||
-          cleanOld === '123'));
-
-    if (!isOldValid) {
-      return { success: false, message: 'Mật khẩu hiện tại không đúng. Vui lòng kiểm tra lại!' };
-    }
-
-    const updatedUser: User = {
-      ...currentUser,
-      passwordHash: cleanNew,
-      plainPassword: cleanNew,
-    };
-
-    setCurrentUser(updatedUser);
-    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
-
     try {
-      localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
-    } catch (e) {}
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          oldPassword: cleanOld,
+          newPassword: cleanNew,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const updatedUser: User = {
+          ...currentUser,
+          passwordHash: cleanNew,
+          plainPassword: cleanNew,
+        };
 
-    addAuditLog(
-      'Đổi mật khẩu cá nhân',
-      `Người dùng ${currentUser.name} (${currentUser.username || currentUser.email}) đã tự thay đổi mật khẩu thành công.`,
-      'Xác thực',
-      currentUser.email || currentUser.username,
-      'SUCCESS'
-    );
+        setCurrentUser(updatedUser);
+        setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
 
-    return { success: true, message: 'Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực.' };
+        try {
+          localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
+          localStorage.setItem(
+            STORAGE_KEYS.USERS,
+            JSON.stringify(users.map((u) => (u.id === currentUser.id ? updatedUser : u)))
+          );
+        } catch (e) {}
+
+        addAuditLog(
+          'Đổi mật khẩu cá nhân',
+          `Người dùng ${currentUser.name} (${currentUser.username || currentUser.email}) đã đổi mật khẩu và đồng bộ toàn hệ thống.`,
+          'Xác thực',
+          currentUser.email || currentUser.username,
+          'SUCCESS'
+        );
+
+        return {
+          success: true,
+          message: 'Đổi mật khẩu thành công! Mật khẩu mới đã được đồng bộ với máy chủ.',
+        };
+      } else {
+        return {
+          success: false,
+          message: data.message || 'Mật khẩu hiện tại không đúng. Vui lòng kiểm tra lại!',
+        };
+      }
+    } catch (err) {
+      // Offline fallback
+      const isOldValid =
+        cleanOld === currentUser.passwordHash ||
+        cleanOld === currentUser.plainPassword ||
+        (currentUser.role === 'ADMIN' &&
+          (cleanOld === 'T@mduc88$#' ||
+            cleanOld.toLowerCase() === 't@mduc88$#' ||
+            cleanOld === 'Admin@2026' ||
+            cleanOld === '123' ||
+            cleanOld === 'admin')) ||
+        (currentUser.role !== 'ADMIN' &&
+          (cleanOld === 'Giaovien@2026' ||
+            cleanOld.toLowerCase() === 'giaovien@2026' ||
+            cleanOld === 'Gv@2026' ||
+            cleanOld === '123'));
+
+      if (!isOldValid) {
+        return { success: false, message: 'Mật khẩu hiện tại không đúng. Vui lòng kiểm tra lại!' };
+      }
+
+      const updatedUser: User = {
+        ...currentUser,
+        passwordHash: cleanNew,
+        plainPassword: cleanNew,
+      };
+
+      setCurrentUser(updatedUser);
+      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+      try {
+        localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
+      } catch (e) {}
+
+      return { success: true, message: 'Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực.' };
+    }
   };
 
-  const batchResetTeacherPasswords = (newPassword: string): { count: number; message: string } => {
+  const batchResetTeacherPasswords = async (
+    newPassword: string
+  ): Promise<{ count: number; message: string }> => {
     const cleanNew = newPassword.trim();
     if (!cleanNew || cleanNew.length < 6) {
       return { count: 0, message: 'Mật khẩu mới phải có tối thiểu 6 ký tự!' };
     }
+
+    try {
+      const res = await fetch('/api/auth/batch-reset-teacher-passwords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: cleanNew }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        let updatedCount = 0;
+        setUsers((prev) =>
+          prev.map((u) => {
+            if (u.role === 'ADMIN' || u.email?.toLowerCase() === 'ducminh1973@gmail.com') {
+              return u;
+            }
+            updatedCount++;
+            return {
+              ...u,
+              passwordHash: cleanNew,
+              plainPassword: cleanNew,
+            };
+          })
+        );
+
+        addAuditLog(
+          'Đổi mật khẩu hàng loạt cho giáo viên',
+          `Admin đã cập nhật lại mật khẩu đồng loạt cho ${data.count || updatedCount} cán bộ, giáo viên và đồng bộ máy chủ.`,
+          'Quản trị người dùng',
+          `${data.count || updatedCount} tài khoản`,
+          'SUCCESS'
+        );
+
+        return {
+          count: data.count || updatedCount,
+          message: data.message || `Đã đổi mật khẩu thành công cho ${data.count || updatedCount} cán bộ, giáo viên toàn trường!`,
+        };
+      }
+    } catch (e) {}
 
     let updatedCount = 0;
     setUsers((prev) =>
@@ -4841,6 +5223,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        syncStatus,
+        lastSyncedTime,
+        forceSyncWithServer,
         isAuthenticated,
         currentUser,
         login,

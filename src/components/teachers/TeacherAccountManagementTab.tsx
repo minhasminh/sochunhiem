@@ -846,8 +846,8 @@ export const TeacherAccountManagementTab: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const res = batchResetTeacherPasswords(batchNewPass);
+                  onClick={async () => {
+                    const res = await batchResetTeacherPasswords(batchNewPass);
                     setIsBatchPassModalOpen(false);
                     showMsg(res.message);
                   }}

@@ -25,6 +25,11 @@ import {
   List,
   Upload,
   FileSpreadsheet,
+  KeyRound,
+  Shield,
+  Lock,
+  Unlock,
+  UserCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../../context/AppContext';
@@ -32,16 +37,20 @@ import {
   TeacherProfile,
   EmploymentStatus,
   AcademicDegree,
+  User,
 } from '../../types';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { TeacherExcelImportModal } from './TeacherExcelImportModal';
+import { TeacherAccountManagementTab } from './TeacherAccountManagementTab';
+import { IssueTeacherAccountModal } from './IssueTeacherAccountModal';
+import { ResetPasswordModal } from './ResetPasswordModal';
 
 const DEPARTMENT_LIST = [
-  'Toán - Tin',
-  'Ngữ văn - KHXH',
-  'KHTN - Công nghệ',
-  'Ngoại ngữ - Nghệ thuật',
-  'Ban Giám Hiệu',
+  'Tổ 1-2-3',
+  'Tổ 4-5',
+  'Tổ khoa học tự nhiên',
+  'Tổ khoa học xã hội',
+  'Tổ Tiếng Anh-GDTC',
 ];
 
 const DEGREE_LIST: AcademicDegree[] = [
@@ -62,6 +71,7 @@ const STATUS_LIST: EmploymentStatus[] = [
 export const TeacherManagementMasterView: React.FC = () => {
   const {
     teachers,
+    users,
     addTeacher,
     updateTeacher,
     deleteTeacher,
@@ -105,6 +115,13 @@ export const TeacherManagementMasterView: React.FC = () => {
   const [deleteCandidate, setDeleteCandidate] = useState<TeacherProfile | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Sub-tabs: 'profiles' (Hồ sơ GV) | 'accounts' (Cấp tài khoản & Mật khẩu Admin)
+  const [activeSubTab, setActiveSubTab] = useState<'profiles' | 'accounts'>('profiles');
+  const [isIssueAccountModalOpen, setIsIssueAccountModalOpen] = useState(false);
+  const [teacherForAccountIssue, setTeacherForAccountIssue] = useState<TeacherProfile | null>(null);
+  const [isResetPassModalOpen, setIsResetPassModalOpen] = useState(false);
+  const [userForResetPass, setUserForResetPass] = useState<User | null>(null);
+
   // Form State
   const [formData, setFormData] = useState<Partial<TeacherProfile>>({
     teacherCode: '',
@@ -114,7 +131,7 @@ export const TeacherManagementMasterView: React.FC = () => {
     email: '',
     phone: '',
     idCardNumber: '',
-    department: 'Toán - Tin',
+    department: 'Tổ khoa học tự nhiên',
     mainSubject: 'Toán',
     secondarySubject: '',
     degree: 'Cử nhân ĐH Sư phạm',
@@ -172,7 +189,7 @@ export const TeacherManagementMasterView: React.FC = () => {
       email: '',
       phone: '',
       idCardNumber: '',
-      department: 'Toán - Tin',
+      department: 'Tổ khoa học tự nhiên',
       mainSubject: 'Toán',
       secondarySubject: '',
       degree: 'Cử nhân ĐH Sư phạm',
@@ -358,8 +375,28 @@ export const TeacherManagementMasterView: React.FC = () => {
               >
                 <Upload className="w-4 h-4 text-indigo-600" /> Nhập từ Excel
               </button>
+
+              <button
+                onClick={() => setActiveSubTab('accounts')}
+                className={`px-3.5 py-2 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                  activeSubTab === 'accounts'
+                    ? 'bg-amber-600 text-white border-amber-600'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                }`}
+                title="Cấp tài khoản & mật khẩu cho giáo viên"
+              >
+                <KeyRound className="w-4 h-4" /> Cấp tài khoản GV
+              </button>
             </>
           )}
+
+          <button
+            onClick={() => setActiveMenu('class-info')}
+            className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            title="Xem bảng phân công & đồng bộ GVCN toàn trường"
+          >
+            <UserCheck className="w-4 h-4 text-purple-600" /> Phân công GVCN ({homeroomCount} lớp)
+          </button>
 
           <button
             onClick={() => setActiveMenu('departments')}
@@ -399,6 +436,49 @@ export const TeacherManagementMasterView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Sub-Tabs for Admin: Profiles vs Account Provisioning */}
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setActiveSubTab('profiles')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'profiles'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 shadow-xs'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Hồ sơ Giáo viên ({teachers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('accounts')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'accounts'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 shadow-xs'
+            }`}
+          >
+            <KeyRound className="w-4 h-4 text-amber-500" />
+            <span>Cấp tài khoản & Mật khẩu (ADMIN)</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                activeSubTab === 'accounts'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-amber-100 text-amber-900 border border-amber-200'
+              }`}
+            >
+              {users.length} tài khoản
+            </span>
+          </button>
+        </div>
+      )}
+
+      {isAdmin && activeSubTab === 'accounts' ? (
+        <TeacherAccountManagementTab />
+      ) : (
+        <>
 
       {statusMsg && (
         <div
@@ -564,84 +644,127 @@ export const TeacherManagementMasterView: React.FC = () => {
                   <th className="py-3 px-4">Số điện thoại</th>
                   <th className="py-3 px-4">Trình độ</th>
                   <th className="py-3 px-4">Biên chế</th>
+                  {isAdmin && <th className="py-3 px-4">Tài khoản (Email) & MK</th>}
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredTeachers.map((t) => (
-                  <tr key={t.id} className="hover:bg-purple-50/30 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-600">
-                      {t.teacherCode}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-700 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
-                          {t.fullName.charAt(0)}
+                {filteredTeachers.map((t) => {
+                  const teacherAcc = users.find(
+                    (u) =>
+                      (u.teacherId && u.teacherId === t.id) ||
+                      (t.email && u.email && u.email.toLowerCase() === t.email.toLowerCase())
+                  );
+
+                  return (
+                    <tr key={t.id} className="hover:bg-purple-50/30 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-600">
+                        {t.teacherCode}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-700 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
+                            {t.fullName.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900">{t.fullName}</div>
+                            <div className="text-[11px] text-slate-400">{t.duty || 'Giáo viên'}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-slate-900">{t.fullName}</div>
-                          <div className="text-[11px] text-slate-400">{t.duty || 'Giáo viên'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 font-medium text-slate-700">{t.department}</td>
-                    <td className="py-3 px-4 font-bold text-purple-900">{t.mainSubject}</td>
-                    <td className="py-3 px-4">
-                      {t.isHomeroom ? (
-                        <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold text-[10px] border border-sky-200">
-                          Lớp {t.homeroomClassName}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[11px]">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-600">{t.phone}</td>
-                    <td className="py-3 px-4 text-slate-700">{t.degree}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                          t.employmentStatus === 'Biên chế chính thức'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {t.employmentStatus}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setSelectedTeacherForDetail(t)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-purple-700 hover:bg-purple-50 transition-colors cursor-pointer"
-                          title="Xem chi tiết hồ sơ"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {isAdmin && (
-                          <>
-                            <button
-                              onClick={() => handleOpenEditModal(t)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-sky-700 hover:bg-sky-50 transition-colors cursor-pointer"
-                              title="Chỉnh sửa hồ sơ"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteCandidate(t)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title="Xóa hồ sơ"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-700">{t.department}</td>
+                      <td className="py-3 px-4 font-bold text-purple-900">{t.mainSubject}</td>
+                      <td className="py-3 px-4">
+                        {t.isHomeroom ? (
+                          <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold text-[10px] border border-sky-200">
+                            Lớp {t.homeroomClassName}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">—</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-600">{t.phone}</td>
+                      <td className="py-3 px-4 text-slate-700">{t.degree}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            t.employmentStatus === 'Biên chế chính thức'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {t.employmentStatus}
+                        </span>
+                      </td>
+
+                      {/* Admin Account & Password quick action */}
+                      {isAdmin && (
+                        <td className="py-3 px-4">
+                          {teacherAcc ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-[11px] text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                {teacherAcc.username}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setUserForResetPass(teacherAcc);
+                                  setIsResetPassModalOpen(true);
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer transition-colors"
+                                title="Đổi / Đặt lại mật khẩu cho giáo viên"
+                              >
+                                <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setTeacherForAccountIssue(t);
+                                setIsIssueAccountModalOpen(true);
+                              }}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                            >
+                              <KeyRound className="w-3 h-3 text-amber-600" /> Cấp TK
+                            </button>
+                          )}
+                        </td>
+                      )}
+
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setSelectedTeacherForDetail(t)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-purple-700 hover:bg-purple-50 transition-colors cursor-pointer"
+                            title="Xem chi tiết hồ sơ"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEditModal(t)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-sky-700 hover:bg-sky-50 transition-colors cursor-pointer"
+                                title="Chỉnh sửa hồ sơ"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteCandidate(t)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Xóa hồ sơ"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredTeachers.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-400">
+                    <td colSpan={isAdmin ? 10 : 9} className="py-8 text-center text-slate-400">
                       Không tìm thấy giáo viên nào phù hợp với điều kiện tìm kiếm.
                     </td>
                   </tr>
@@ -698,6 +821,50 @@ export const TeacherManagementMasterView: React.FC = () => {
                   <span className="font-mono font-medium text-slate-700">{t.phone}</span>
                 </div>
               </div>
+
+              {/* Admin Account status in card */}
+              {isAdmin && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-slate-400 text-[11px]">Tài khoản:</span>
+                  {(() => {
+                    const userAcc = users.find(
+                      (u) =>
+                        (u.teacherId && u.teacherId === t.id) ||
+                        (t.email && u.email && u.email.toLowerCase() === t.email.toLowerCase())
+                    );
+                    if (userAcc) {
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-[11px] text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                            {userAcc.username}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setUserForResetPass(userAcc);
+                              setIsResetPassModalOpen(true);
+                            }}
+                            className="p-1 rounded text-amber-600 hover:text-amber-800 hover:bg-amber-50 cursor-pointer transition-colors"
+                            title="Đặt lại mật khẩu cho giáo viên"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <button
+                        onClick={() => {
+                          setTeacherForAccountIssue(t);
+                          setIsIssueAccountModalOpen(true);
+                        }}
+                        className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                      >
+                        <KeyRound className="w-3 h-3 text-amber-600" /> Cấp tài khoản
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span
@@ -821,6 +988,82 @@ export const TeacherManagementMasterView: React.FC = () => {
                   {selectedTeacherForDetail.notes}
                 </div>
               )}
+
+              {/* Admin Account & Security Section */}
+              {isAdmin && (() => {
+                const teacherAcc = users.find(
+                  (u) =>
+                    (u.teacherId && u.teacherId === selectedTeacherForDetail.id) ||
+                    (selectedTeacherForDetail.email && u.email && u.email.toLowerCase() === selectedTeacherForDetail.email.toLowerCase())
+                );
+                return (
+                  <div className="p-3.5 bg-gradient-to-r from-purple-50 to-indigo-50/50 rounded-xl border border-purple-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-purple-900 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                        <KeyRound className="w-3.5 h-3.5 text-purple-700" /> Tài khoản hệ thống (Quyền Admin)
+                      </div>
+                      {teacherAcc ? (
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          teacherAcc.status === 'locked' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {teacherAcc.status === 'locked' ? 'Đã khóa' : 'Đang hoạt động'}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-amber-100 text-amber-900 border border-amber-200">
+                          Chưa cấp tài khoản
+                        </span>
+                      )}
+                    </div>
+
+                    {teacherAcc ? (
+                      <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Tên đăng nhập (Email cá nhân):</span>
+                          <span className="font-mono font-bold text-purple-900">{teacherAcc.username}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Vai trò hệ thống:</span>
+                          <span className="font-bold text-slate-800">{teacherAcc.role}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">
+                        Giáo viên chưa có tài khoản đăng nhập. Tên đăng nhập mặc định sẽ là địa chỉ email cá nhân: <strong>{selectedTeacherForDetail.email || 'Chưa cập nhật email'}</strong>.
+                      </p>
+                    )}
+
+                    <div className="pt-2 border-t border-purple-100 flex items-center justify-end gap-2">
+                      {teacherAcc ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const t = selectedTeacherForDetail;
+                            setSelectedTeacherForDetail(null);
+                            setUserForResetPass(teacherAcc);
+                            setIsResetPassModalOpen(true);
+                          }}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" /> Đặt lại mật khẩu
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const t = selectedTeacherForDetail;
+                            setSelectedTeacherForDetail(null);
+                            setTeacherForAccountIssue(t);
+                            setIsIssueAccountModalOpen(true);
+                          }}
+                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" /> Cấp tài khoản & Mật khẩu
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="pt-2 border-t border-slate-100 flex justify-end">
@@ -1030,7 +1273,15 @@ export const TeacherManagementMasterView: React.FC = () => {
                     type="checkbox"
                     id="isHomeroomCheck"
                     checked={formData.isHomeroom}
-                    onChange={(e) => setFormData({ ...formData, isHomeroom: e.target.checked })}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setFormData({
+                        ...formData,
+                        isHomeroom: checked,
+                        homeroomClassId: checked ? formData.homeroomClassId : '',
+                        homeroomClassName: checked ? formData.homeroomClassName : '',
+                      });
+                    }}
                     className="w-4 h-4 text-purple-600 rounded-md focus:ring-purple-500 cursor-pointer"
                   />
                   <label htmlFor="isHomeroomCheck" className="font-bold text-slate-800 cursor-pointer">
@@ -1054,11 +1305,26 @@ export const TeacherManagementMasterView: React.FC = () => {
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-purple-900 focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                     >
                       <option value="">-- Chọn lớp chủ nhiệm --</option>
-                      {classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>
-                          Lớp {cls.className} (Khối {cls.grade}) - Hiện tại: {cls.homeroomTeacherName || 'Chưa gán'}
-                        </option>
-                      ))}
+                      <optgroup label="Cấp Tiểu học (Khối 1 - 5)">
+                        {classes
+                          .filter((c) => ['1', '2', '3', '4', '5'].includes(c.grade))
+                          .sort((a, b) => parseInt(a.grade) - parseInt(b.grade) || a.className.localeCompare(b.className, 'vi', { numeric: true }))
+                          .map((cls) => (
+                            <option key={cls.id} value={cls.id}>
+                              Lớp {cls.className} (Khối {cls.grade}) - Hiện tại: {cls.homeroomTeacherName || 'Chưa gán'}
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="Cấp Trung học cơ sở (Khối 6 - 9)">
+                        {classes
+                          .filter((c) => ['6', '7', '8', '9'].includes(c.grade))
+                          .sort((a, b) => parseInt(a.grade) - parseInt(b.grade) || a.className.localeCompare(b.className, 'vi', { numeric: true }))
+                          .map((cls) => (
+                            <option key={cls.id} value={cls.id}>
+                              Lớp {cls.className} (Khối {cls.grade}) - Hiện tại: {cls.homeroomTeacherName || 'Chưa gán'}
+                            </option>
+                          ))}
+                      </optgroup>
                     </select>
                   </div>
                 )}
@@ -1121,6 +1387,34 @@ export const TeacherManagementMasterView: React.FC = () => {
         existingTeachers={teachers}
         departments={departments}
       />
+        </>
+      )}
+
+      {/* Modal: Issue Teacher Account */}
+      {isIssueAccountModalOpen && (
+        <IssueTeacherAccountModal
+          isOpen={isIssueAccountModalOpen}
+          onClose={() => {
+            setIsIssueAccountModalOpen(false);
+            setTeacherForAccountIssue(null);
+          }}
+          targetTeacher={teacherForAccountIssue}
+          onSuccess={(msg) => showMsg(msg)}
+        />
+      )}
+
+      {/* Modal: Reset Password */}
+      {isResetPassModalOpen && userForResetPass && (
+        <ResetPasswordModal
+          isOpen={isResetPassModalOpen}
+          onClose={() => {
+            setIsResetPassModalOpen(false);
+            setUserForResetPass(null);
+          }}
+          user={userForResetPass}
+          onSuccess={(msg) => showMsg(msg)}
+        />
+      )}
     </div>
   );
 };

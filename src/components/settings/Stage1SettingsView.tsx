@@ -22,12 +22,19 @@ import {
   Layers,
   Sparkles,
   Users,
+  Mail,
+  KeyRound,
+  ExternalLink,
+  Copy,
+  Edit,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { UserRole } from '../../types';
+import { UserRole, User as UserType } from '../../types';
 import { ClassPromotionMasterView } from '../promotion/ClassPromotionMasterView';
 import { DataIntegrityCheckerView } from '../integrity/DataIntegrityCheckerView';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { TeacherAccountManagementTab } from '../teachers/TeacherAccountManagementTab';
 
 type SettingsTab = 'account-roles' | 'backup-restore' | 'audit-logs' | 'class-promotion' | 'data-integrity';
 
@@ -44,6 +51,10 @@ export const Stage1SettingsView: React.FC = () => {
     schoolYears,
     school,
     users,
+    teachers,
+    autoGenerateAccountsForAllTeachers,
+    updateUserLoginEmail,
+    setActiveMenu,
     switchUserRole,
     backups,
     createBackup,
@@ -59,6 +70,32 @@ export const Stage1SettingsView: React.FC = () => {
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [showClearDemoConfirm, setShowClearDemoConfirm] = useState(false);
   const [showRestoreDemoConfirm, setShowRestoreDemoConfirm] = useState(false);
+
+  // Email Edit State for Admin
+  const [editingEmailUser, setEditingEmailUser] = useState<UserType | null>(null);
+  const [newEmailValue, setNewEmailValue] = useState<string>('');
+  const [syncUsernameOption, setSyncUsernameOption] = useState<boolean>(true);
+  const [emailEditError, setEmailEditError] = useState<string | null>(null);
+
+  const handleOpenEditEmail = (u: UserType) => {
+    setEditingEmailUser(u);
+    setNewEmailValue(u.email);
+    setSyncUsernameOption(true);
+    setEmailEditError(null);
+  };
+
+  const handleSaveEditedEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmailUser) return;
+    setEmailEditError(null);
+    const res = updateUserLoginEmail(editingEmailUser.id, newEmailValue, syncUsernameOption);
+    if (res.success) {
+      showMsg(res.message);
+      setEditingEmailUser(null);
+    } else {
+      setEmailEditError(res.message);
+    }
+  };
 
   // Audit Logs Filter
   const [logFilterModule, setLogFilterModule] = useState<string>('ALL');
@@ -327,12 +364,43 @@ export const Stage1SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Database & Demo Management for ADMIN ONLY */}
+          {/* Quản lý Cấu trúc Tài khoản theo tiêu chuẩn người dùng */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <KeyRound className="w-4.5 h-4.5 text-indigo-600" />
+                  Quản lý Tài khoản Cán bộ - Giáo viên
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Cấu trúc quản lý chuẩn: Họ và tên, Email đăng nhập, Tổ chuyên môn, Bộ môn, Vai trò, Trạng thái tài khoản và 5 công cụ thao tác nhanh.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = autoGenerateAccountsForAllTeachers();
+                    showMsg(res.message);
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Tự động kiểm tra và cấp quyền đăng nhập bằng email cho toàn bộ giáo viên"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Đồng bộ cấp quyền Email
+                </button>
+              </div>
+            </div>
+
+            <TeacherAccountManagementTab />
+          </div>
+
+          {/* Database Management for ADMIN ONLY */}
           {isAdmin ? (
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
                 <Database className="w-4 h-4 text-sky-600" />
-                Cơ sở dữ liệu & Trạng thái dữ liệu Demo (Dành riêng cho ADMIN)
+                Cơ sở dữ liệu Vận hành chính thức (Dành riêng cho ADMIN)
               </h3>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -355,17 +423,15 @@ export const Stage1SettingsView: React.FC = () => {
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setShowClearDemoConfirm(true)}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Xóa dữ liệu Demo
-                </button>
+                <div className="text-[11px] text-slate-500">
+                  Trạng thái: <span className="font-bold text-emerald-600">Production Ready (Vận hành chính thức)</span>
+                </div>
                 <button
                   onClick={() => setShowRestoreDemoConfirm(true)}
-                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Đặt lại cơ sở dữ liệu về trạng thái xuất xưởng sạch"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Khôi phục Demo
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-600" /> Đặt lại CSDL chuẩn (Clean Seed)
                 </button>
               </div>
             </div>
@@ -609,16 +675,110 @@ export const Stage1SettingsView: React.FC = () => {
         confirmVariant="primary"
       />
 
-      {/* Modal Confirm Restore Demo */}
+      {/* Modal Confirm Reset Clean Production */}
       <ConfirmModal
         isOpen={showRestoreDemoConfirm}
         onClose={() => setShowRestoreDemoConfirm(false)}
         onConfirm={handleRestoreDemo}
-        title="Xác nhận khôi phục dữ liệu Demo mẫu"
-        message="Hệ thống sẽ nạp lại dữ liệu mẫu đầy đủ ban đầu của Trường TH&THCS Nguyễn Đình Anh (Lớp 7/1: 31 học sinh, điểm danh, nề nếp, kết quả học tập). Bạn nên tạo bản Sao lưu trước nếu muốn giữ dữ liệu hiện tại."
-        confirmLabel="Khôi phục Demo"
+        title="Xác nhận đặt lại CSDL chuẩn (Clean Seed)"
+        message="Hệ thống sẽ đặt lại CSDL về trạng thái chuẩn ban đầu của Trường TH&THCS Nguyễn Đình Anh (8 lớp học, 12 giáo viên, 5 tổ chuyên môn, 0 học sinh). Bạn có thể khôi phục lại dữ liệu bất cứ lúc nào từ tệp sao lưu JSON đã tải."
+        confirmLabel="Đặt lại CSDL chuẩn"
         confirmVariant="warning"
       />
+
+      {/* Modal Sửa Email Đăng nhập (Dành cho Quản trị viên) */}
+      {editingEmailUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-sky-600 to-indigo-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center">
+                  <Mail className="w-4.5 h-4.5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Chỉnh sửa Email Đăng nhập</h3>
+                  <p className="text-[11px] text-sky-100">Cập nhật quyền truy cập cho cán bộ - giáo viên</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingEmailUser(null)}
+                className="p-1 rounded-xl hover:bg-white/10 text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedEmail} className="p-5 space-y-4 text-xs">
+              {emailEditError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{emailEditError}</span>
+                </div>
+              )}
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <div className="text-slate-500 text-[11px]">Tài khoản cán bộ:</div>
+                <div className="font-bold text-slate-900 text-sm">{editingEmailUser.name}</div>
+                <div className="text-slate-500 text-[11px]">
+                  {editingEmailUser.title} • Vai trò: <span className="font-bold text-sky-700">{editingEmailUser.role}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  Địa chỉ Email đăng nhập mới <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={newEmailValue}
+                    onChange={(e) => setNewEmailValue(e.target.value)}
+                    placeholder="VD: leducminh.gv@gmail.com..."
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 text-xs focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Email hiện tại: <span className="font-mono text-slate-600 font-semibold">{editingEmailUser.email}</span>
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2 p-3 bg-sky-50/70 border border-sky-100 rounded-2xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncUsernameOption}
+                  onChange={(e) => setSyncUsernameOption(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-sky-600 rounded-md border-slate-300 focus:ring-sky-500"
+                />
+                <div className="text-[11px] text-slate-700 leading-relaxed">
+                  <span className="font-bold text-sky-950">Đồng bộ Tên đăng nhập & Hồ sơ nhân sự:</span>
+                  <p className="text-slate-500 text-[10px] mt-0.5">
+                    Tự động cập nhật tên đăng nhập hệ thống và hồ sơ giáo viên sang email mới này.
+                  </p>
+                </div>
+              </label>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingEmailUser(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <Check className="w-4 h-4" /> Lưu Email đăng nhập
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

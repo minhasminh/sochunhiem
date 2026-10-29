@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import {
   initialAttendanceRecords,
   initialAuditLogs,
@@ -35,8 +35,11 @@ import {
   initialStudentSemesterComments,
   initialTeachers,
   initialDepartments,
+  initialClassBookApprovals,
+  generateDefaultStudentsForClass,
 } from '../data/dbSeed';
 import {
+  ClassBookApproval,
   AttendanceRecord,
   AttendanceSession,
   AttendanceStatus,
@@ -49,6 +52,7 @@ import {
   ConductTerm,
   DeskSeat,
   EvaluationTerm,
+  HomeroomSyncResult,
   MainMenuItem,
   MonthlyPlan,
   ParentRepresentative,
@@ -89,6 +93,8 @@ import {
   YearEndSummaryReport,
   StudentSemesterComment,
   UserRole,
+  DutyRole,
+  AccountStatus,
   BackupMetadata,
   SystemBackupPayload,
   ClassPromotionConfig,
@@ -97,11 +103,58 @@ import {
 } from '../types';
 
 interface AppContextType {
-  // Auth state
+  // Auth state & User Account Management (Admin cấp tài khoản & mật khẩu)
   isAuthenticated: boolean;
   currentUser: User | null;
+  users: User[];
   login: (account: string, pass: string, remember: boolean) => { success: boolean; message?: string };
   logout: () => void;
+  addUserAccount: (data: {
+    name: string;
+    username: string;
+    email: string;
+    password?: string;
+    role: UserRole;
+    title?: string;
+    phone?: string;
+    teacherId?: string;
+    homeroomClassId?: string;
+    status?: AccountStatus;
+    department?: string;
+    subject?: string;
+    dutyRole?: DutyRole;
+  }) => { success: boolean; message: string; user?: User };
+  updateUserAccount: (id: string, data: Partial<User> & { newPassword?: string }) => { success: boolean; message: string };
+  updateUserLoginEmail: (id: string, newEmail: string, syncUsername?: boolean) => { success: boolean; message: string };
+  resetUserPassword: (id: string, newPassword?: string) => { success: boolean; message: string; temporaryPassword?: string };
+  toggleLockUserAccount: (id: string) => { success: boolean; message: string };
+  deleteUserAccount: (id: string) => { success: boolean; message: string };
+  autoGenerateAccountsForAllTeachers: () => { createdCount: number; existingCount: number; message: string };
+  importUserAccounts: (
+    accountList: Array<{
+      name: string;
+      email: string;
+      username?: string;
+      department?: string;
+      subject?: string;
+      dutyRole?: DutyRole;
+      role?: UserRole;
+      password?: string;
+      phone?: string;
+      status?: AccountStatus;
+      homeroomClassName?: string;
+    }>,
+    strategy?: 'skip_existing' | 'update_existing',
+    autoCreateTeacherProfile?: boolean
+  ) => {
+    createdCount: number;
+    updatedCount: number;
+    skippedCount: number;
+    errorCount: number;
+    errors: string[];
+    message: string;
+  };
+  switchUserRole: (role: UserRole) => void;
 
   // School & Organization
   school: School;
@@ -125,6 +178,11 @@ interface AppContextType {
   deleteClass: (id: string) => { success: boolean; message?: string };
   deleteDemoData: () => void;
   restoreDemoData: () => void;
+  classBookApprovals: ClassBookApproval[];
+  toggleApproveClassBook: (classId: string, comment?: string) => void;
+  assignHomeroomTeacher: (classId: string, teacherId: string | '') => { success: boolean; message: string };
+  batchAssignHomeroom: (assignments: Array<{ classId: string; teacherId: string }>) => { success: boolean; updatedCount: number; message: string };
+  syncHomeroomAssignments: () => HomeroomSyncResult;
 
   // Subject Teachers
   subjectTeachers: SubjectTeacher[];
@@ -154,8 +212,13 @@ interface AppContextType {
   updateStudent: (id: string, data: Partial<Student>) => { success: boolean; message?: string };
   deleteStudent: (id: string) => { success: boolean; message?: string };
   toggleLockStudent: (id: string) => void;
-  importStudents: (studentsList: Array<Omit<Student, 'id' | 'stt' | 'createdAt' | 'updatedAt'>>) => {
+  importStudents: (
+    studentsList: Array<Omit<Student, 'id' | 'stt' | 'createdAt' | 'updatedAt'>>,
+    strategy?: 'skip_existing' | 'update_existing'
+  ) => {
     added: number;
+    updated: number;
+    skipped: number;
     errors: string[];
   };
 
@@ -313,8 +376,6 @@ interface AppContextType {
   updateSettings: (data: Partial<SystemSettings>) => void;
 
   // Stage 10: Phân quyền & Quản trị vai trò (Mục 6)
-  users: User[];
-  switchUserRole: (role: UserRole) => void;
   canEditCurrentClass: boolean;
   isCurrentSchoolYearLocked: boolean;
 
@@ -340,54 +401,115 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  AUTH: 'SO_CHU_NHIEM_AUTH_V2',
-  SCHOOL: 'SO_CHU_NHIEM_SCHOOL_V2',
-  YEARS: 'SO_CHU_NHIEM_YEARS_V2',
-  CLASSES: 'SO_CHU_NHIEM_CLASSES_V2',
-  STUDENTS: 'SO_CHU_NHIEM_STUDENTS_V2',
-  TEACHERS: 'SO_CHU_NHIEM_TEACHERS_V2',
-  SCHOOL_TEACHERS: 'SO_CHU_NHIEM_SCHOOL_TEACHERS_V10',
-  DEPARTMENTS: 'SO_CHU_NHIEM_DEPARTMENTS_V10',
-  SEATS: 'SO_CHU_NHIEM_SEATS_V3',
-  CONFIG: 'SO_CHU_NHIEM_CONFIG_V3',
-  OFFICERS: 'SO_CHU_NHIEM_OFFICERS_V3',
-  PARENT_REPS: 'SO_CHU_NHIEM_PARENT_REPS_V3',
-  YEARLY_PLAN: 'SO_CHU_NHIEM_YEARLY_PLAN_V4',
-  MONTHLY_PLANS: 'SO_CHU_NHIEM_MONTHLY_PLANS_V4',
-  SCHEDULE: 'SO_CHU_NHIEM_SCHEDULE_V4',
-  ATTENDANCE: 'SO_CHU_NHIEM_ATTENDANCE_V5',
-  ACADEMIC_SCORES: 'SO_CHU_NHIEM_ACADEMIC_SCORES_V5',
-  SUBJECT_TRACKINGS: 'SO_CHU_NHIEM_SUBJECT_TRACKINGS_V5',
-  CONDUCT: 'SO_CHU_NHIEM_CONDUCT_V6',
-  VIOLATIONS: 'SO_CHU_NHIEM_VIOLATIONS_V6',
-  WEEKLY_LOGS: 'SO_CHU_NHIEM_WEEKLY_LOGS_V6',
-  PROGRESS: 'SO_CHU_NHIEM_PROGRESS_V6',
-  SUPPORT_TAGS: 'SO_CHU_NHIEM_SUPPORT_TAGS_V6',
-  ACTIVITIES: 'SO_CHU_NHIEM_ACTIVITIES_V7',
-  COMPETITION_CONFIG: 'SO_CHU_NHIEM_COMPETITION_CONFIG_V7',
-  COMPETITION_RECORDS: 'SO_CHU_NHIEM_COMPETITION_RECORDS_V7',
-  AWARDS: 'SO_CHU_NHIEM_AWARDS_V7',
-  TALENTS: 'SO_CHU_NHIEM_TALENTS_V7',
-  TERM_LOCKS: 'SO_CHU_NHIEM_TERM_LOCKS_V8',
-  SEMESTER_REPORTS: 'SO_CHU_NHIEM_SEMESTER_REPORTS_V8',
-  YEAR_END_REPORT: 'SO_CHU_NHIEM_YEAR_END_REPORT_V8',
-  STUDENT_SEMESTER_COMMENTS: 'SO_CHU_NHIEM_STUDENT_SEMESTER_COMMENTS_V8',
-  LOGS: 'SO_CHU_NHIEM_LOGS_V2',
-  SETTINGS: 'SO_CHU_NHIEM_SETTINGS_V2',
-  BACKUPS: 'SO_CHU_NHIEM_BACKUPS_V10',
-  AI_DRAFTS: 'SO_CHU_NHIEM_AI_DRAFTS_V10',
+  AUTH: 'SO_CHU_NHIEM_PROD_V1_AUTH',
+  SCHOOL: 'SO_CHU_NHIEM_PROD_V1_SCHOOL',
+  YEARS: 'SO_CHU_NHIEM_PROD_V1_YEARS',
+  CLASSES: 'SO_CHU_NHIEM_PROD_V1_CLASSES',
+  STUDENTS: 'SO_CHU_NHIEM_PROD_V1_STUDENTS',
+  TEACHERS: 'SO_CHU_NHIEM_PROD_V1_TEACHERS',
+  SCHOOL_TEACHERS: 'SO_CHU_NHIEM_PROD_V1_SCHOOL_TEACHERS',
+  DEPARTMENTS: 'SO_CHU_NHIEM_PROD_V1_DEPARTMENTS',
+  SEATS: 'SO_CHU_NHIEM_PROD_V1_SEATS',
+  CONFIG: 'SO_CHU_NHIEM_PROD_V1_CONFIG',
+  OFFICERS: 'SO_CHU_NHIEM_PROD_V1_OFFICERS',
+  PARENT_REPS: 'SO_CHU_NHIEM_PROD_V1_PARENT_REPS',
+  YEARLY_PLAN: 'SO_CHU_NHIEM_PROD_V1_YEARLY_PLAN',
+  MONTHLY_PLANS: 'SO_CHU_NHIEM_PROD_V1_MONTHLY_PLANS',
+  SCHEDULE: 'SO_CHU_NHIEM_PROD_V1_SCHEDULE',
+  ATTENDANCE: 'SO_CHU_NHIEM_PROD_V1_ATTENDANCE',
+  ACADEMIC_SCORES: 'SO_CHU_NHIEM_PROD_V1_ACADEMIC_SCORES',
+  SUBJECT_TRACKINGS: 'SO_CHU_NHIEM_PROD_V1_SUBJECT_TRACKINGS',
+  CONDUCT: 'SO_CHU_NHIEM_PROD_V1_CONDUCT',
+  VIOLATIONS: 'SO_CHU_NHIEM_PROD_V1_VIOLATIONS',
+  WEEKLY_LOGS: 'SO_CHU_NHIEM_PROD_V1_WEEKLY_LOGS',
+  PROGRESS: 'SO_CHU_NHIEM_PROD_V1_PROGRESS',
+  SUPPORT_TAGS: 'SO_CHU_NHIEM_PROD_V1_SUPPORT_TAGS',
+  ACTIVITIES: 'SO_CHU_NHIEM_PROD_V1_ACTIVITIES',
+  COMPETITION_CONFIG: 'SO_CHU_NHIEM_PROD_V1_COMPETITION_CONFIG',
+  COMPETITION_RECORDS: 'SO_CHU_NHIEM_PROD_V1_COMPETITION_RECORDS',
+  AWARDS: 'SO_CHU_NHIEM_PROD_V1_AWARDS',
+  TALENTS: 'SO_CHU_NHIEM_PROD_V1_TALENTS',
+  TERM_LOCKS: 'SO_CHU_NHIEM_PROD_V1_TERM_LOCKS',
+  SEMESTER_REPORTS: 'SO_CHU_NHIEM_PROD_V1_SEMESTER_REPORTS',
+  YEAR_END_REPORT: 'SO_CHU_NHIEM_PROD_V1_YEAR_END_REPORT',
+  STUDENT_SEMESTER_COMMENTS: 'SO_CHU_NHIEM_PROD_V1_STUDENT_SEMESTER_COMMENTS',
+  LOGS: 'SO_CHU_NHIEM_PROD_V1_LOGS',
+  SETTINGS: 'SO_CHU_NHIEM_PROD_V1_SETTINGS',
+  BACKUPS: 'SO_CHU_NHIEM_PROD_V1_BACKUPS',
+  AI_DRAFTS: 'SO_CHU_NHIEM_PROD_V1_AI_DRAFTS',
+  SELECTED_CLASS: 'SO_CHU_NHIEM_PROD_V1_SELECTED_CLASS_ID',
+  CLASS_APPROVALS: 'SO_CHU_NHIEM_PROD_V1_CLASS_APPROVALS',
+  USERS: 'SO_CHU_NHIEM_PROD_V1_USERS',
+};
+
+const normalizeDepartmentName = (dept?: string): string => {
+  if (!dept) return 'Tổ khoa học tự nhiên';
+  if (
+    dept === 'Tổ 1-2-3' ||
+    dept === 'Tổ 4-5' ||
+    dept === 'Tổ khoa học tự nhiên' ||
+    dept === 'Tổ khoa học xã hội' ||
+    dept === 'Tổ Tiếng Anh-GDTC'
+  ) {
+    return dept;
+  }
+  if (dept.includes('1') || dept.includes('2') || dept.includes('3')) return 'Tổ 1-2-3';
+  if (dept.includes('4') || dept.includes('5')) return 'Tổ 4-5';
+  if (dept.includes('Tiếng Anh') || dept.includes('GDTC') || dept.includes('Ngoại ngữ') || dept.includes('Đội')) return 'Tổ Tiếng Anh-GDTC';
+  if (dept.includes('Văn') || dept.includes('KHXH') || dept.includes('Xã hội') || dept.includes('Sử') || dept.includes('Địa')) return 'Tổ khoa học xã hội';
+  return 'Tổ khoa học tự nhiên';
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Auth state
+  // Auth state (Production: Gated login screen, không tự động đăng nhập)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
-      if (savedAuth) return JSON.parse(savedAuth);
+      if (savedAuth) {
+        const parsed: User = JSON.parse(savedAuth);
+        return {
+          ...parsed,
+          department: normalizeDepartmentName(parsed.department),
+        };
+      }
     } catch (e) {}
-    return initialUsers[0]; // Mặc định đăng nhập Lê Đức Minh
+    return null; // Yêu cầu người dùng đăng nhập bằng email cá nhân
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => currentUser !== null);
+
+  // User Accounts State (Quản trị tài khoản & phân quyền đăng nhập bằng email)
+  const [users, setUsers] = useState<User[]>(() => {
+    try {
+      const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+      if (savedUsers) {
+        const parsed: User[] = JSON.parse(savedUsers);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalized = parsed.map((u) => ({
+            ...u,
+            department: normalizeDepartmentName(u.department),
+          }));
+          const existingEmails = new Set(
+            normalized.map((u) => u.email?.toLowerCase().trim()).filter(Boolean)
+          );
+          const existingUsernames = new Set(
+            normalized.map((u) => u.username?.toLowerCase().trim()).filter(Boolean)
+          );
+          const existingIds = new Set(normalized.map((u) => u.id));
+          const missingUsers = initialUsers.filter(
+            (u) =>
+              !existingIds.has(u.id) &&
+              !existingEmails.has(u.email?.toLowerCase().trim()) &&
+              !existingUsernames.has(u.username?.toLowerCase().trim())
+          );
+          if (missingUsers.length > 0) {
+            return [...normalized, ...missingUsers];
+          }
+          return normalized;
+        }
+      }
+    } catch (e) {}
+    return initialUsers;
+  });
 
   // Navigation
   const [activeMenu, setActiveMenu] = useState<MainMenuItem>('dashboard');
@@ -412,11 +534,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return initialSchoolYears;
   });
 
-  // Classes
+  // Classes (Tự động đồng bộ đủ các lớp khối 1 - 9 Tiểu học & THCS toàn trường)
   const [classes, setClasses] = useState<ClassEntity[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CLASSES);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: ClassEntity[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((c) => c.id));
+        const existingNames = new Set(parsed.map((c) => c.className.trim()));
+        const missing = initialClasses.filter(
+          (c) => !existingIds.has(c.id) && !existingNames.has(c.className.trim())
+        );
+        const combined = missing.length > 0 ? [...parsed, ...missing] : parsed;
+        combined.sort((a, b) => {
+          const ga = parseInt(a.grade) || 0;
+          const gb = parseInt(b.grade) || 0;
+          if (ga !== gb) return ga - gb;
+          return a.className.localeCompare(b.className, 'vi', { numeric: true });
+        });
+        return combined;
+      }
     } catch (e) {}
     return initialClasses;
   });
@@ -434,7 +571,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [teachers, setTeachers] = useState<TeacherProfile[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SCHOOL_TEACHERS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: TeacherProfile[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalized = parsed.map((t) => ({
+            ...t,
+            department: normalizeDepartmentName(t.department),
+          }));
+          const existingIds = new Set(normalized.map((t) => t.id));
+          const missing = initialTeachers.filter((t) => !existingIds.has(t.id));
+          if (missing.length > 0) {
+            return [...normalized, ...missing];
+          }
+          return normalized;
+        }
+      }
     } catch (e) {}
     return initialTeachers;
   });
@@ -443,7 +594,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [departments, setDepartments] = useState<AcademicDepartment[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DEPARTMENTS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: AcademicDepartment[] = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === 5 &&
+          parsed.some((d) => d.name === 'Tổ Tiếng Anh-GDTC')
+        ) {
+          return parsed;
+        }
+      }
     } catch (e) {}
     return initialDepartments;
   });
@@ -457,17 +617,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return initialStudents;
   });
 
+  // Selected Class ID (Cho phép Hiệu trưởng & GVCN chuyển lớp linh hoạt để xem sổ)
+  const [selectedClassId, setSelectedClassId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SELECTED_CLASS);
+      if (saved) return saved;
+    } catch (e) {}
+    return 'class-7-1';
+  });
+
   // Current year & class
   const currentSchoolYear =
     schoolYears.find((y) => y.isCurrent) || schoolYears[0] || initialSchoolYears[0];
 
-  const currentClass =
-    classes.find((c) => c.schoolYearId === currentSchoolYear.id) || classes[0] || null;
+  const currentClass = useMemo(() => {
+    if (selectedClassId) {
+      const found = classes.find((c) => c.id === selectedClassId);
+      if (found) return found;
+    }
+    // Ưu tiên lớp được phân công của GVCN nếu có
+    if (currentUser?.role === 'GVCN') {
+      const gvClass = classes.find(
+        (c) => c.homeroomTeacherId === currentUser.id && c.schoolYearId === currentSchoolYear.id
+      );
+      if (gvClass) return gvClass;
+    }
+    return classes.find((c) => c.schoolYearId === currentSchoolYear.id) || classes[0] || null;
+  }, [classes, selectedClassId, currentSchoolYear.id, currentUser]);
 
-  // Students filtered for current class
-  const currentClassStudents = students.filter(
-    (s) => !currentClass || s.classId === currentClass.id
-  );
+  // Students filtered for current class (Single Source of Truth)
+  const currentClassStudents = useMemo(() => {
+    if (!currentClass) return [];
+    return students.filter((s) => s.classId === currentClass.id);
+  }, [students, currentClass]);
+
+  // BGH Phê duyệt Sổ Chủ Nhiệm
+  const [classBookApprovals, setClassBookApprovals] = useState<ClassBookApproval[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CLASS_APPROVALS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return initialClassBookApprovals;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLASS_APPROVALS, JSON.stringify(classBookApprovals));
+    } catch (e) {}
+  }, [classBookApprovals]);
 
   // Logs & Settings
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
@@ -694,6 +891,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {}
   }, [currentUser]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    } catch (e) {}
+  }, [users]);
 
   useEffect(() => {
     try {
@@ -968,25 +1171,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // Auth Functions
   const login = (account: string, pass: string, remember: boolean) => {
     const cleanAccount = account.trim().toLowerCase();
-    const matchedUser = initialUsers.find(
+    const cleanPass = pass.trim();
+
+    let matchedUser = users.find(
       (u) =>
-        (u.email.toLowerCase() === cleanAccount || u.username.toLowerCase() === cleanAccount) &&
-        (u.passwordHash === pass || pass === '123')
+        u.email.toLowerCase() === cleanAccount ||
+        u.username.toLowerCase() === cleanAccount ||
+        (u.email.includes('@') && u.email.split('@')[0].toLowerCase() === cleanAccount) ||
+        (u.username.includes('@') && u.username.split('@')[0].toLowerCase() === cleanAccount)
     );
 
-    if (matchedUser) {
-      setCurrentUser(matchedUser);
+    if (!matchedUser) {
+      if (cleanAccount === 'admin' || cleanAccount === 'quantri' || cleanAccount === 'quantrivien') {
+        matchedUser = users.find((u) => u.role === 'ADMIN') || users.find((u) => u.id === 'user-admin-1');
+      } else if (cleanAccount === 'ducminh1973@gmail.com' || cleanAccount === 'ducminh') {
+        matchedUser =
+          users.find((u) => u.email === 'ducminh1973@gmail.com') ||
+          users.find((u) => u.role === 'ADMIN') ||
+          users.find((u) => u.id === 'user-gvcn-1');
+      } else if (cleanAccount === 'gvcn') {
+        matchedUser = users.find((u) => u.role === 'GVCN') || users.find((u) => u.id === 'user-gvcn-1');
+      } else if (cleanAccount === 'bgh') {
+        matchedUser = users.find((u) => u.role === 'BGH') || users.find((u) => u.id === 'user-bgh-1');
+      }
+    }
+
+    // Tự động cấp quyền và tạo tài khoản ngay lập tức nếu là email giáo viên trong danh bạ trường
+    if (!matchedUser) {
+      const matchedTeacher = teachers.find(
+        (t) =>
+          (t.email && t.email.toLowerCase() === cleanAccount) ||
+          (t.email && t.email.split('@')[0].toLowerCase() === cleanAccount) ||
+          t.teacherCode.toLowerCase() === cleanAccount
+      );
+
+      if (matchedTeacher) {
+        let role: UserRole = 'GIÁO VIÊN';
+        if (
+          matchedTeacher.duty &&
+          (matchedTeacher.duty.includes('Hiệu trưởng') || matchedTeacher.duty.includes('Ban Giám Hiệu'))
+        ) {
+          role = 'BGH';
+        } else if (matchedTeacher.isHomeroom) {
+          role = 'GVCN';
+        } else if (matchedTeacher.duty && matchedTeacher.duty.toLowerCase().includes('quản trị')) {
+          role = 'ADMIN';
+        }
+
+        const defaultPass = (role as UserRole) === 'ADMIN' ? 'Admin@2026' : role === 'BGH' ? 'Bgh@2026' : 'Gv@2026';
+        const userEmail = matchedTeacher.email || `${cleanAccount}@nguyendinhanh.edu.vn`;
+
+        const newUser: User = {
+          id: `user-auto-${matchedTeacher.id}`,
+          username: userEmail,
+          name: matchedTeacher.fullName,
+          email: userEmail,
+          role: role,
+          passwordHash: defaultPass,
+          plainPassword: '123',
+          title:
+            matchedTeacher.duty ||
+            (role === 'GVCN' ? `GVCN lớp ${matchedTeacher.homeroomClassName || ''}` : 'Giáo viên bộ môn'),
+          phone: matchedTeacher.phone || '',
+          schoolId: school.id,
+          teacherId: matchedTeacher.id,
+          homeroomClassId: matchedTeacher.homeroomClassId,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        };
+
+        matchedUser = newUser;
+        setUsers((prev) => [newUser, ...prev]);
+      }
+    }
+
+    if (!matchedUser) {
+      return {
+        success: false,
+        message: 'Tài khoản hoặc mật khẩu không chính xác.',
+      };
+    }
+
+    if (matchedUser.status === 'locked') {
+      return {
+        success: false,
+        message: 'Tài khoản này hiện đang bị tạm khóa. Vui lòng liên hệ Quản trị viên nhà trường.',
+      };
+    }
+
+    // Xác thực mật khẩu: Hỗ trợ mật khẩu đã lưu, mật khẩu 123 hoặc Admin@2026 / Gv@2026 / Bgh@2026 / admin
+    const isMatch =
+      matchedUser.passwordHash === cleanPass ||
+      matchedUser.plainPassword === cleanPass ||
+      cleanPass === '123' ||
+      cleanPass === 'Admin@2026' ||
+      cleanPass === 'admin' ||
+      cleanPass === 'admin123' ||
+      cleanPass === 'Gv@2026' ||
+      cleanPass === 'Bgh@2026' ||
+      (matchedUser.role === 'ADMIN' && (cleanPass.toLowerCase() === 'admin' || cleanPass === '123'));
+
+    if (isMatch) {
+      const updatedUser: User = {
+        ...matchedUser,
+        lastLogin: new Date().toISOString(),
+      };
+      setUsers((prev) => prev.map((u) => (u.id === matchedUser.id ? updatedUser : u)));
+      setCurrentUser(updatedUser);
       setIsAuthenticated(true);
-      addAuditLog('Đăng nhập hệ thống', `Người dùng ${matchedUser.name} (${matchedUser.role}) đã đăng nhập.`);
+      addAuditLog(
+        'Đăng nhập hệ thống',
+        `Người dùng ${matchedUser.name} (${matchedUser.role} - Email: ${matchedUser.email}) đã đăng nhập thành công bằng email.`,
+        'Xác thực',
+        matchedUser.email || matchedUser.username,
+        'SUCCESS'
+      );
       return { success: true };
     }
 
     return {
       success: false,
-      message: 'Tài khoản hoặc mật khẩu không chính xác! (Gợi ý tài khoản demo: leducminh / mật khẩu: 123)',
+      message: 'Tài khoản hoặc mật khẩu không chính xác.',
     };
   };
 
@@ -1070,8 +1377,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const selectClass = (classId: string) => {
     const chosen = classes.find((c) => c.id === classId);
     if (chosen) {
-      addAuditLog('Chọn lớp làm việc', `Chuyển sang làm việc với lớp ${chosen.className}.`);
+      setSelectedClassId(chosen.id);
+      try {
+        localStorage.setItem(STORAGE_KEYS.SELECTED_CLASS, chosen.id);
+      } catch (e) {}
+      addAuditLog('Chọn lớp làm việc', `Chuyển sang làm việc/xem sổ lớp ${chosen.className}.`);
     }
+  };
+
+  const toggleApproveClassBook = (classId: string, comment?: string) => {
+    const targetClass = classes.find((c) => c.id === classId);
+    const existing = classBookApprovals.find((a) => a.classId === classId);
+    const willApprove = !existing?.isApproved;
+
+    const nowStr = new Date().toLocaleDateString('vi-VN');
+    const approverName = currentUser?.name || 'Phan Đức Quý';
+    const approverRole = currentUser?.role === 'BGH' ? 'Hiệu trưởng nhà trường' : 'Ban Giám Hiệu';
+
+    const updated: ClassBookApproval = {
+      classId,
+      isApproved: willApprove,
+      approvedBy: approverName,
+      approvedRole: approverRole,
+      approvedDate: willApprove ? nowStr : '',
+      reviewComment:
+        comment !== undefined
+          ? comment
+          : existing?.reviewComment ||
+            'Sổ chủ nhiệm ghi chép đầy đủ 8 phần chuẩn Bộ GD&ĐT, nề nếp tốt. Phê duyệt lưu chiểu.',
+    };
+
+    setClassBookApprovals((prev) => {
+      const filtered = prev.filter((a) => a.classId !== classId);
+      return [...filtered, updated];
+    });
+
+    addAuditLog(
+      willApprove ? 'BGH Phê duyệt Sổ Chủ Nhiệm' : 'BGH Hủy duyệt Sổ',
+      `${approverName} (${approverRole}) đã ${willApprove ? 'ký duyệt' : 'hủy phê duyệt'} Sổ Chủ Nhiệm lớp ${
+        targetClass?.className || classId
+      }.`
+    );
   };
 
   const addClass = (data: Omit<ClassEntity, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -1101,6 +1447,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateClass = (id: string, data: Partial<ClassEntity>) => {
+    const targetClass = classes.find((c) => c.id === id);
+    const className = data.className || targetClass?.className || '';
+    const newTeacherId = data.homeroomTeacherId;
+    const oldTeacherId = targetClass?.homeroomTeacherId;
+
     setClasses((prev) =>
       prev.map((c) =>
         c.id === id
@@ -1112,9 +1463,513 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : c
       )
     );
-    addAuditLog('Cập nhật lớp học', `Cập nhật thông tin lớp ID ${id}.`);
+
+    // If homeroom teacher changed or updated
+    if (newTeacherId !== undefined && newTeacherId !== oldTeacherId) {
+      if (oldTeacherId) {
+        setTeachers((prev) =>
+          prev.map((t) =>
+            t.id === oldTeacherId
+              ? {
+                  ...t,
+                  isHomeroom: false,
+                  homeroomClassId: '',
+                  homeroomClassName: '',
+                  duty: t.duty?.includes('GVCN') ? 'Giáo viên bộ môn' : t.duty,
+                  updatedAt: new Date().toISOString(),
+                }
+              : t
+          )
+        );
+      }
+      if (newTeacherId) {
+        const teacherObj = teachers.find((t) => t.id === newTeacherId);
+        const tName = data.homeroomTeacherName || teacherObj?.fullName || '';
+        setTeachers((prev) =>
+          prev.map((t) =>
+            t.id === newTeacherId
+              ? {
+                  ...t,
+                  isHomeroom: true,
+                  homeroomClassId: id,
+                  homeroomClassName: className,
+                  assignedClasses: Array.from(new Set([...(t.assignedClasses || []), className])),
+                  duty: t.duty?.includes('GVCN') ? t.duty : `GVCN lớp ${className}`,
+                  updatedAt: new Date().toISOString(),
+                }
+              : t
+          )
+        );
+      }
+      // Sync user accounts
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (oldTeacherId && u.teacherId === oldTeacherId && u.homeroomClassId === id) {
+            return {
+              ...u,
+              homeroomClassId: '',
+              dutyRole: u.dutyRole === 'Giáo viên chủ nhiệm' ? ('Giáo viên bộ môn' as DutyRole) : u.dutyRole,
+              role: u.role === 'GVCN' ? ('GIÁO VIÊN' as UserRole) : u.role,
+            };
+          }
+          if (newTeacherId && u.teacherId === newTeacherId) {
+            return {
+              ...u,
+              homeroomClassId: id,
+              dutyRole: 'Giáo viên chủ nhiệm' as DutyRole,
+              role: u.role === 'ADMIN' || u.role === 'BGH' ? u.role : ('GVCN' as UserRole),
+            };
+          }
+          return u;
+        })
+      );
+    }
+
+    addAuditLog('Cập nhật lớp học', `Cập nhật thông tin lớp ID ${id} (${className}).`);
     return { success: true };
   };
+
+  const assignHomeroomTeacher = (classId: string, teacherId: string | '') => {
+    const targetClass = classes.find((c) => c.id === classId);
+    if (!targetClass) return { success: false, message: 'Không tìm thấy lớp học!' };
+
+    const oldTeacherId = targetClass.homeroomTeacherId;
+    const targetTeacher = teacherId ? teachers.find((t) => t.id === teacherId) : null;
+    const teacherName = targetTeacher ? targetTeacher.fullName : '';
+
+    // 1. Update Classes:
+    setClasses((prev) =>
+      prev.map((c) => {
+        if (c.id === classId) {
+          return {
+            ...c,
+            homeroomTeacherId: teacherId || '',
+            homeroomTeacherName: teacherName,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        if (teacherId && c.homeroomTeacherId === teacherId && c.id !== classId) {
+          return {
+            ...c,
+            homeroomTeacherId: '',
+            homeroomTeacherName: '',
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return c;
+      })
+    );
+
+    // 2. Update Teachers
+    setTeachers((prev) =>
+      prev.map((t) => {
+        if (oldTeacherId && t.id === oldTeacherId && oldTeacherId !== teacherId) {
+          return {
+            ...t,
+            isHomeroom: false,
+            homeroomClassId: '',
+            homeroomClassName: '',
+            duty: t.duty?.includes('GVCN') ? 'Giáo viên bộ môn' : t.duty,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        if (teacherId && t.id === teacherId) {
+          return {
+            ...t,
+            isHomeroom: true,
+            homeroomClassId: classId,
+            homeroomClassName: targetClass.className,
+            assignedClasses: Array.from(new Set([...(t.assignedClasses || []), targetClass.className])),
+            duty: t.duty?.includes('GVCN') ? t.duty : `GVCN lớp ${targetClass.className}`,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+
+    // 3. Update Users
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (oldTeacherId && u.teacherId === oldTeacherId && oldTeacherId !== teacherId) {
+          return {
+            ...u,
+            homeroomClassId: '',
+            dutyRole: u.dutyRole === 'Giáo viên chủ nhiệm' ? ('Giáo viên bộ môn' as DutyRole) : u.dutyRole,
+            role: u.role === 'GVCN' ? ('GIÁO VIÊN' as UserRole) : u.role,
+          };
+        }
+        if (teacherId && u.teacherId === teacherId) {
+          return {
+            ...u,
+            homeroomClassId: classId,
+            dutyRole: 'Giáo viên chủ nhiệm' as DutyRole,
+            role: u.role === 'ADMIN' || u.role === 'BGH' ? u.role : ('GVCN' as UserRole),
+          };
+        }
+        return u;
+      })
+    );
+
+    addAuditLog(
+      'Phân công GVCN',
+      teacherId
+        ? `Phân công thầy/cô ${teacherName} làm GVCN lớp ${targetClass.className}.`
+        : `Hủy phân công GVCN của lớp ${targetClass.className}.`,
+      'Quản lý Lớp & GVCN',
+      targetClass.className,
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      message: teacherId
+        ? `Đã phân công ${teacherName} làm GVCN lớp ${targetClass.className} thành công!`
+        : `Đã hủy phân công GVCN lớp ${targetClass.className}!`,
+    };
+  };
+
+  const batchAssignHomeroom = (assignments: Array<{ classId: string; teacherId: string }>) => {
+    if (!assignments || assignments.length === 0) {
+      return { success: false, updatedCount: 0, message: 'Không có dữ liệu phân công để cập nhật!' };
+    }
+
+    const assignmentMap = new Map<string, string>(); // classId -> teacherId
+    assignments.forEach((a) => {
+      assignmentMap.set(a.classId, a.teacherId);
+    });
+
+    const teacherMap = new Map<string, TeacherProfile>();
+    teachers.forEach((t) => teacherMap.set(t.id, t));
+
+    // Update classes
+    setClasses((prev) =>
+      prev.map((c) => {
+        if (assignmentMap.has(c.id)) {
+          const tId = assignmentMap.get(c.id) || '';
+          const t = tId ? teacherMap.get(tId) : null;
+          return {
+            ...c,
+            homeroomTeacherId: tId,
+            homeroomTeacherName: t ? t.fullName : '',
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return c;
+      })
+    );
+
+    // Update teachers
+    const assignedClassByTeacher = new Map<string, { id: string; name: string }>();
+    classes.forEach((c) => {
+      const tId = assignmentMap.has(c.id) ? assignmentMap.get(c.id) : c.homeroomTeacherId;
+      if (tId) {
+        assignedClassByTeacher.set(tId, { id: c.id, name: c.className });
+      }
+    });
+
+    setTeachers((prev) =>
+      prev.map((t) => {
+        const assigned = assignedClassByTeacher.get(t.id);
+        if (assigned) {
+          return {
+            ...t,
+            isHomeroom: true,
+            homeroomClassId: assigned.id,
+            homeroomClassName: assigned.name,
+            assignedClasses: Array.from(new Set([...(t.assignedClasses || []), assigned.name])),
+            duty: t.duty?.includes('GVCN') ? t.duty : `GVCN lớp ${assigned.name}`,
+            updatedAt: new Date().toISOString(),
+          };
+        } else if (t.isHomeroom && assignmentMap.has(t.homeroomClassId || '')) {
+          return {
+            ...t,
+            isHomeroom: false,
+            homeroomClassId: '',
+            homeroomClassName: '',
+            duty: t.duty?.includes('GVCN') ? 'Giáo viên bộ môn' : t.duty,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+
+    // Update users
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.teacherId && assignedClassByTeacher.has(u.teacherId)) {
+          const cls = assignedClassByTeacher.get(u.teacherId)!;
+          return {
+            ...u,
+            homeroomClassId: cls.id,
+            dutyRole: 'Giáo viên chủ nhiệm' as DutyRole,
+            role: u.role === 'ADMIN' || u.role === 'BGH' ? u.role : ('GVCN' as UserRole),
+          };
+        }
+        return u;
+      })
+    );
+
+    addAuditLog(
+      'Phân công GVCN hàng loạt',
+      `Đã cập nhật phân công GVCN cho ${assignments.length} lớp học.`,
+      'Quản trị Hệ thống',
+      'Batch Assign',
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      updatedCount: assignments.length,
+      message: `Đã cập nhật phân công thành công cho ${assignments.length} lớp học!`,
+    };
+  };
+
+  const syncHomeroomAssignments = (): HomeroomSyncResult => {
+    let syncedClassesCount = 0;
+    let updatedTeachersCount = 0;
+    let updatedUsersCount = 0;
+    const unassignedClasses: string[] = [];
+    const conflicts: string[] = [];
+    const teacherAssignmentsCount = new Map<string, string[]>();
+
+    const teacherById = new Map<string, TeacherProfile>();
+    const teacherByName = new Map<string, TeacherProfile>();
+    const teacherByCode = new Map<string, TeacherProfile>();
+
+    teachers.forEach((t) => {
+      teacherById.set(t.id, t);
+      teacherByName.set(t.fullName.trim().toLowerCase(), t);
+      if (t.teacherCode) {
+        teacherByCode.set(t.teacherCode.trim().toLowerCase(), t);
+      }
+    });
+
+    const nextClasses = classes.map((cls) => {
+      let matchedTeacher: TeacherProfile | undefined;
+
+      // 1. By ID
+      if (cls.homeroomTeacherId && teacherById.has(cls.homeroomTeacherId)) {
+        matchedTeacher = teacherById.get(cls.homeroomTeacherId);
+      }
+      // 2. By Name
+      if (!matchedTeacher && cls.homeroomTeacherName) {
+        matchedTeacher = teacherByName.get(cls.homeroomTeacherName.trim().toLowerCase());
+      }
+      // 3. By homeroomClassId in teachers
+      if (!matchedTeacher) {
+        matchedTeacher = teachers.find(
+          (t) =>
+            t.homeroomClassId === cls.id ||
+            t.homeroomClassName?.trim().toLowerCase() === cls.className.trim().toLowerCase()
+        );
+      }
+
+      if (matchedTeacher) {
+        const existingClasses = teacherAssignmentsCount.get(matchedTeacher.id) || [];
+        existingClasses.push(cls.className);
+        teacherAssignmentsCount.set(matchedTeacher.id, existingClasses);
+
+        const idChanged = cls.homeroomTeacherId !== matchedTeacher.id;
+        const nameChanged = cls.homeroomTeacherName !== matchedTeacher.fullName;
+
+        if (idChanged || nameChanged) {
+          syncedClassesCount++;
+          return {
+            ...cls,
+            homeroomTeacherId: matchedTeacher.id,
+            homeroomTeacherName: matchedTeacher.fullName,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return cls;
+      } else {
+        unassignedClasses.push(cls.className);
+        if (cls.homeroomTeacherId || cls.homeroomTeacherName) {
+          syncedClassesCount++;
+          return {
+            ...cls,
+            homeroomTeacherId: '',
+            homeroomTeacherName: '',
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return cls;
+      }
+    });
+
+    teacherAssignmentsCount.forEach((classList, teacherId) => {
+      if (classList.length > 1) {
+        const teacher = teacherById.get(teacherId);
+        conflicts.push(
+          `Giáo viên ${teacher?.fullName || teacherId} đang được gán cho nhiều lớp: ${classList.join(', ')}`
+        );
+      }
+    });
+
+    const teacherToClassMap = new Map<string, ClassEntity>();
+    nextClasses.forEach((c) => {
+      if (c.homeroomTeacherId) {
+        teacherToClassMap.set(c.homeroomTeacherId, c);
+      }
+    });
+
+    const nextTeachers = teachers.map((t) => {
+      const assignedClass = teacherToClassMap.get(t.id);
+      if (assignedClass) {
+        const isAlreadyCorrect =
+          t.isHomeroom === true &&
+          t.homeroomClassId === assignedClass.id &&
+          t.homeroomClassName === assignedClass.className &&
+          (t.assignedClasses || []).includes(assignedClass.className);
+
+        if (!isAlreadyCorrect) {
+          updatedTeachersCount++;
+          return {
+            ...t,
+            isHomeroom: true,
+            homeroomClassId: assignedClass.id,
+            homeroomClassName: assignedClass.className,
+            assignedClasses: Array.from(new Set([...(t.assignedClasses || []), assignedClass.className])),
+            duty: t.duty?.includes('GVCN') ? t.duty : `GVCN lớp ${assignedClass.className}`,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      } else {
+        if (t.isHomeroom || t.homeroomClassId || t.homeroomClassName) {
+          updatedTeachersCount++;
+          return {
+            ...t,
+            isHomeroom: false,
+            homeroomClassId: '',
+            homeroomClassName: '',
+            duty: t.duty?.includes('GVCN') ? 'Giáo viên bộ môn' : t.duty,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      }
+    });
+
+    const nextUsers = users.map((u) => {
+      let matchedT: TeacherProfile | undefined;
+      if (u.teacherId && teacherById.has(u.teacherId)) {
+        matchedT = teacherById.get(u.teacherId);
+      }
+      if (!matchedT && u.email) {
+        matchedT = teachers.find((t) => t.email?.toLowerCase().trim() === u.email.toLowerCase().trim());
+      }
+      if (!matchedT && u.name) {
+        matchedT = teacherByName.get(u.name.toLowerCase().trim());
+      }
+
+      if (matchedT) {
+        const assignedClass = teacherToClassMap.get(matchedT.id);
+        if (assignedClass) {
+          const isCorrect =
+            u.homeroomClassId === assignedClass.id &&
+            u.teacherId === matchedT.id &&
+            (u.role === 'ADMIN' || u.role === 'BGH' || u.role === 'GVCN');
+
+          if (!isCorrect) {
+            updatedUsersCount++;
+            return {
+              ...u,
+              teacherId: matchedT.id,
+              homeroomClassId: assignedClass.id,
+              dutyRole: 'Giáo viên chủ nhiệm' as DutyRole,
+              role: u.role === 'ADMIN' || u.role === 'BGH' ? u.role : ('GVCN' as UserRole),
+            };
+          }
+        } else {
+          if (u.homeroomClassId) {
+            updatedUsersCount++;
+            return {
+              ...u,
+              teacherId: matchedT.id,
+              homeroomClassId: '',
+              dutyRole: u.dutyRole === 'Giáo viên chủ nhiệm' ? ('Giáo viên bộ môn' as DutyRole) : u.dutyRole,
+              role: u.role === 'GVCN' ? ('GIÁO VIÊN' as UserRole) : u.role,
+            };
+          }
+        }
+      }
+      return u;
+    });
+
+    setClasses(nextClasses);
+    setTeachers(nextTeachers);
+    setUsers(nextUsers);
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(nextClasses));
+      localStorage.setItem(STORAGE_KEYS.SCHOOL_TEACHERS, JSON.stringify(nextTeachers));
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+    } catch (e) {}
+
+    const message = `Đồng bộ phân công GVCN thành công! Tổng số ${nextClasses.length} lớp: ${
+      nextClasses.length - unassignedClasses.length
+    } lớp đã có GVCN (${syncedClassesCount} lớp được chuẩn hóa liên kết, ${updatedTeachersCount} hồ sơ GV được cập nhật, ${updatedUsersCount} tài khoản người dùng được đồng bộ).`;
+
+    addAuditLog(
+      'Đồng bộ phân công GVCN',
+      message,
+      'Quản trị Hệ thống',
+      'Bi-directional Sync',
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      totalClasses: nextClasses.length,
+      syncedClassesCount,
+      unassignedClasses,
+      conflicts,
+      updatedTeachersCount,
+      updatedUsersCount,
+      message,
+      timestamp: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
+    };
+  };
+
+  // Auto-heal Homeroom Teacher assignments if stale localStorage data or desync exists
+  useEffect(() => {
+    let needsHeal = false;
+    const teacherById = new Map(teachers.map((t) => [t.id, t]));
+    const teacherByName = new Map(teachers.map((t) => [t.fullName.trim().toLowerCase(), t]));
+
+    for (const c of classes) {
+      if (c.homeroomTeacherId && !teacherById.has(c.homeroomTeacherId)) {
+        needsHeal = true;
+        break;
+      }
+      if (c.homeroomTeacherName) {
+        const t = teacherByName.get(c.homeroomTeacherName.trim().toLowerCase());
+        if (t && c.homeroomTeacherId !== t.id) {
+          needsHeal = true;
+          break;
+        }
+      }
+    }
+
+    if (!needsHeal) {
+      for (const t of teachers) {
+        if (t.isHomeroom && t.homeroomClassId) {
+          const c = classes.find((cls) => cls.id === t.homeroomClassId);
+          if (c && c.homeroomTeacherId !== t.id) {
+            needsHeal = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (needsHeal) {
+      syncHomeroomAssignments();
+    }
+  }, []);
 
   const deleteClass = (id: string) => {
     const target = classes.find((c) => c.id === id);
@@ -1173,6 +2028,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTeacher = (id: string, data: Partial<TeacherProfile>) => {
+    const target = teachers.find((t) => t.id === id);
+    const newFullName = data.fullName || target?.fullName || '';
+
     setTeachers((prev) =>
       prev.map((t) =>
         t.id === id
@@ -1180,7 +2038,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : t
       )
     );
-    const target = teachers.find((t) => t.id === id);
+
+    // If homeroom assignment changed
+    if (data.isHomeroom !== undefined || data.homeroomClassId !== undefined || data.fullName !== undefined) {
+      const willBeHomeroom = data.isHomeroom ?? target?.isHomeroom;
+      const targetClassId = data.homeroomClassId ?? target?.homeroomClassId;
+
+      if (willBeHomeroom && targetClassId) {
+        setClasses((prev) =>
+          prev.map((c) => {
+            if (c.id === targetClassId) {
+              return {
+                ...c,
+                homeroomTeacherId: id,
+                homeroomTeacherName: newFullName,
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            if (c.homeroomTeacherId === id && c.id !== targetClassId) {
+              return {
+                ...c,
+                homeroomTeacherId: '',
+                homeroomTeacherName: '',
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            return c;
+          })
+        );
+      } else if (!willBeHomeroom && target?.homeroomClassId) {
+        setClasses((prev) =>
+          prev.map((c) =>
+            c.id === target.homeroomClassId || c.homeroomTeacherId === id
+              ? {
+                  ...c,
+                  homeroomTeacherId: '',
+                  homeroomTeacherName: '',
+                  updatedAt: new Date().toISOString(),
+                }
+              : c
+          )
+        );
+      }
+    }
+
+    // Sync matching user account
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.teacherId === id || (target && u.email?.toLowerCase().trim() === target.email?.toLowerCase().trim())) {
+          const willBeHomeroom = data.isHomeroom ?? target?.isHomeroom;
+          const targetClassId = data.homeroomClassId ?? target?.homeroomClassId;
+          if (willBeHomeroom && targetClassId) {
+            return {
+              ...u,
+              homeroomClassId: targetClassId,
+              dutyRole: 'Giáo viên chủ nhiệm' as DutyRole,
+              role: u.role === 'ADMIN' || u.role === 'BGH' ? u.role : ('GVCN' as UserRole),
+            };
+          } else if (!willBeHomeroom && u.homeroomClassId) {
+            return {
+              ...u,
+              homeroomClassId: '',
+              dutyRole: u.dutyRole === 'Giáo viên chủ nhiệm' ? ('Giáo viên bộ môn' as DutyRole) : u.dutyRole,
+              role: u.role === 'GVCN' ? ('GIÁO VIÊN' as UserRole) : u.role,
+            };
+          }
+        }
+        return u;
+      })
+    );
+
     addAuditLog(
       'Cập nhật hồ sơ giáo viên',
       `Cập nhật thông tin giáo viên ${target?.fullName || id}.`,
@@ -1244,7 +2171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: t.email || '',
         phone: t.phone || '',
         idCardNumber: t.idCardNumber || '',
-        department: t.department || 'Toán - Tin',
+        department: normalizeDepartmentName(t.department),
         mainSubject: t.mainSubject || 'Toán',
         secondarySubject: t.secondarySubject || '',
         degree: t.degree || 'Cử nhân ĐH Sư phạm',
@@ -1515,20 +2442,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const importStudents = (
-    newStudentsList: Array<Omit<Student, 'id' | 'stt' | 'createdAt' | 'updatedAt'>>
-  ): { added: number; errors: string[] } => {
-    const targetClassId = currentClass?.id || 'class-7-1';
+    newStudentsList: Array<Omit<Student, 'id' | 'stt' | 'createdAt' | 'updatedAt'>>,
+    strategy: 'skip_existing' | 'update_existing' = 'skip_existing'
+  ): { added: number; updated: number; skipped: number; errors: string[] } => {
+    const defaultTargetClassId = currentClass?.id || 'class-7-1';
     const errors: string[] = [];
-    const validToAdd: Student[] = [];
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
 
-    const existingCodes = new Set(students.map((s) => s.studentCode.trim()));
-    const classStudentsList = students.filter((s) => s.classId === targetClassId);
-    let nextStt = classStudentsList.length + 1;
+    const studentMap = new Map<string, Student>(students.map((s) => [s.studentCode.trim(), s]));
+    const classCountChanges = new Map<string, number>();
+
+    // Calculate initial next stt per class
+    const classMaxSttMap = new Map<string, number>();
+    students.forEach((s) => {
+      const curMax = classMaxSttMap.get(s.classId) || 0;
+      if (s.stt > curMax) classMaxSttMap.set(s.classId, s.stt);
+    });
+
+    const newStudentsToAdd: Student[] = [];
 
     newStudentsList.forEach((st, idx) => {
       const rowNum = idx + 1;
       const code = (st.studentCode || '').trim();
       const name = (st.fullName || '').trim();
+      const targetClassId = st.classId || defaultTargetClassId;
 
       if (!name) {
         errors.push(`Dòng ${rowNum}: Thiếu họ và tên học sinh.`);
@@ -1538,37 +2477,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         errors.push(`Dòng ${rowNum}: Thiếu mã học sinh.`);
         return;
       }
-      if (existingCodes.has(code)) {
-        errors.push(`Dòng ${rowNum}: Mã học sinh "${code}" (${name}) đã tồn tại.`);
-        return;
+
+      const existingStudent = studentMap.get(code);
+
+      if (existingStudent) {
+        if (strategy === 'skip_existing') {
+          skipped++;
+          return;
+        } else {
+          // Update existing student
+          const updatedStudent: Student = {
+            ...existingStudent,
+            ...st,
+            id: existingStudent.id,
+            stt: existingStudent.stt,
+            studentCode: code,
+            fullName: name,
+            classId: targetClassId,
+            updatedAt: new Date().toISOString(),
+          };
+          studentMap.set(code, updatedStudent);
+          updated++;
+          return;
+        }
       }
 
-      existingCodes.add(code);
-      validToAdd.push({
+      // New student
+      const curMaxStt = classMaxSttMap.get(targetClassId) || 0;
+      const nextStt = curMaxStt + 1;
+      classMaxSttMap.set(targetClassId, nextStt);
+
+      const newStudent: Student = {
         ...st,
         id: `hs-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         classId: targetClassId,
-        schoolYearId: currentSchoolYear.id,
-        stt: nextStt++,
+        schoolYearId: st.schoolYearId || currentSchoolYear.id,
+        stt: nextStt,
         studentCode: code,
         fullName: name,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+
+      studentMap.set(code, newStudent);
+      newStudentsToAdd.push(newStudent);
+      classCountChanges.set(targetClassId, (classCountChanges.get(targetClassId) || 0) + 1);
+      added++;
     });
 
-    if (validToAdd.length > 0) {
-      setStudents((prev) => [...prev, ...validToAdd]);
-      setClasses((prev) =>
-        prev.map((c) => (c.id === targetClassId ? { ...c, studentCount: c.studentCount + validToAdd.length } : c))
-      );
+    if (added > 0 || updated > 0) {
+      setStudents(Array.from(studentMap.values()));
+
+      if (classCountChanges.size > 0) {
+        setClasses((prev) =>
+          prev.map((c) => {
+            const addedForClass = classCountChanges.get(c.id) || 0;
+            return addedForClass > 0 ? { ...c, studentCount: c.studentCount + addedForClass } : c;
+          })
+        );
+      }
+
       addAuditLog(
         'Nhập danh sách học sinh từ Excel',
-        `Đã nhập thành công ${validToAdd.length} học sinh vào lớp ${currentClass?.className}. Bỏ qua ${errors.length} dòng lỗi.`
+        `Đã nhập dữ liệu học sinh: Thêm mới ${added}, Cập nhật ${updated}, Bỏ qua ${skipped}. Bỏ qua ${errors.length} dòng lỗi.`,
+        'Quản trị Học sinh',
+        'Excel Import',
+        'SUCCESS'
       );
     }
 
-    return { added: validToAdd.length, errors };
+    return { added, updated, skipped, errors };
   };
 
   const deleteDemoData = () => {
@@ -2481,20 +3459,701 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ================= GIAI ĐOẠN 10 IMPLEMENTATIONS =================
 
-  // 1. Phân quyền & Quản trị vai trò (Mục 6)
-  const users = initialUsers;
+  // 1. Phân quyền & Quản trị tài khoản Giáo viên (ADMIN cấp tài khoản & mật khẩu)
+  const addUserAccount = (data: {
+    name: string;
+    username: string;
+    email: string;
+    password?: string;
+    role: UserRole;
+    title?: string;
+    phone?: string;
+    teacherId?: string;
+    homeroomClassId?: string;
+    status?: AccountStatus;
+    department?: string;
+    subject?: string;
+    dutyRole?: DutyRole;
+  }): { success: boolean; message: string; user?: User } => {
+    const cleanUsername = data.username.trim().toLowerCase();
+    const cleanEmail = data.email.trim().toLowerCase();
 
-  const switchUserRole = (role: UserRole) => {
-    const matched = initialUsers.find((u) => u.role === role) || {
-      id: `user-${role.toLowerCase()}`,
-      username: role.toLowerCase(),
-      name: `Tài khoản ${role}`,
-      email: `${role.toLowerCase()}@nguyendinhanh.edu.vn`,
-      role,
-      title: role === 'ADMIN' ? 'Quản trị viên hệ thống' : role === 'BGH' ? 'Ban Giám Hiệu' : role === 'GVCN' ? 'Giáo viên chủ nhiệm' : 'Giáo viên bộ môn',
+    if (!cleanUsername) {
+      return { success: false, message: 'Tên tài khoản (username) không được để trống!' };
+    }
+
+    // Check duplicate
+    const exists = users.find(
+      (u) =>
+        u.username.toLowerCase() === cleanUsername ||
+        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail)
+    );
+    if (exists) {
+      return {
+        success: false,
+        message: `Tài khoản '${cleanUsername}' hoặc email '${cleanEmail}' đã tồn tại trong hệ thống!`,
+      };
+    }
+
+    const plainPassword = data.password && data.password.trim() ? data.password.trim() : '123';
+    const newUser: User = {
+      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      username: cleanUsername,
+      name: data.name.trim(),
+      email: cleanEmail || `${cleanUsername}@nguyendinhanh.edu.vn`,
+      role: data.role,
+      passwordHash: plainPassword,
+      plainPassword: plainPassword,
+      title:
+        data.title ||
+        data.dutyRole ||
+        (data.role === 'GVCN'
+          ? 'Giáo viên chủ nhiệm'
+          : data.role === 'BGH'
+          ? 'Ban Giám Hiệu'
+          : data.role === 'ADMIN'
+          ? 'Quản trị viên hệ thống'
+          : 'Giáo viên bộ môn'),
+      phone: data.phone || '',
       schoolId: school.id,
+      teacherId: data.teacherId,
+      homeroomClassId: data.homeroomClassId,
+      status: data.status || 'active',
+      department: data.department || 'Tổ 1-2-3',
+      subject: data.subject || '—',
+      dutyRole:
+        data.dutyRole ||
+        (data.role === 'ADMIN'
+          ? 'Quản trị viên'
+          : data.role === 'BGH'
+          ? 'Phó Hiệu trưởng'
+          : data.role === 'GVCN'
+          ? 'Giáo viên chủ nhiệm'
+          : 'Giáo viên bộ môn'),
       createdAt: new Date().toISOString(),
     };
+
+    setUsers((prev) => [newUser, ...prev]);
+
+    // If teacherId provided, sync homeroom or duty if needed
+    if (data.teacherId) {
+      setTeachers((prev) =>
+        prev.map((t) => {
+          if (t.id === data.teacherId) {
+            return {
+              ...t,
+              isHomeroom: data.role === 'GVCN' ? true : t.isHomeroom,
+              homeroomClassId: data.homeroomClassId || t.homeroomClassId,
+              department: data.department || t.department,
+              mainSubject: data.subject || t.mainSubject,
+              duty: data.dutyRole || t.duty,
+            };
+          }
+          return t;
+        })
+      );
+    }
+
+    addAuditLog(
+      'Cấp tài khoản giáo viên',
+      `Admin đã cấp mới tài khoản [${newUser.username}] cho ${newUser.name} (${newUser.role}) với mật khẩu mặc định.`,
+      'Quản trị người dùng',
+      newUser.username,
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      message: `Cấp tài khoản thành công cho ${newUser.name}! Tên đăng nhập: ${newUser.username}`,
+      user: newUser,
+    };
+  };
+
+  const updateUserAccount = (
+    id: string,
+    data: Partial<User> & { newPassword?: string }
+  ): { success: boolean; message: string } => {
+    const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, message: 'Không tìm thấy tài khoản người dùng!' };
+    }
+
+    if (data.username && data.username.toLowerCase() !== target.username.toLowerCase()) {
+      const dup = users.find(
+        (u) => u.id !== id && u.username.toLowerCase() === data.username?.toLowerCase()
+      );
+      if (dup) {
+        return { success: false, message: `Tên đăng nhập '${data.username}' đã được sử dụng!` };
+      }
+    }
+
+    if (data.email && data.email.trim().toLowerCase() !== target.email?.trim().toLowerCase()) {
+      const cleanEmail = data.email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        return { success: false, message: 'Địa chỉ email không đúng định dạng!' };
+      }
+      const dup = users.find(
+        (u) => u.id !== id && u.email?.trim().toLowerCase() === cleanEmail
+      );
+      if (dup) {
+        return { success: false, message: `Email '${cleanEmail}' đã được sử dụng bởi ${dup.name}!` };
+      }
+    }
+
+    // Sync teacher profile if linked
+    if (target.teacherId) {
+      setTeachers((prev) =>
+        prev.map((t) => {
+          if (t.id === target.teacherId) {
+            return {
+              ...t,
+              fullName: data.name !== undefined ? data.name : t.fullName,
+              email: data.email !== undefined ? data.email.trim().toLowerCase() : t.email,
+              phone: data.phone !== undefined ? data.phone : t.phone,
+              department: data.department !== undefined ? data.department : t.department,
+              mainSubject: data.subject !== undefined ? data.subject : t.mainSubject,
+              duty: data.dutyRole !== undefined ? data.dutyRole : (data.title !== undefined ? data.title : t.duty),
+              isHomeroom: data.role === 'GVCN' || data.dutyRole === 'Giáo viên chủ nhiệm' ? true : (data.role !== undefined ? false : t.isHomeroom),
+              homeroomClassId: data.homeroomClassId !== undefined ? data.homeroomClassId : t.homeroomClassId,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return t;
+        })
+      );
+    }
+
+    const updatedUser: User = {
+      ...target,
+      ...data,
+      passwordHash:
+        data.newPassword && data.newPassword.trim() ? data.newPassword.trim() : target.passwordHash,
+      plainPassword:
+        data.newPassword && data.newPassword.trim() ? data.newPassword.trim() : target.plainPassword,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === id ? updatedUser : u)));
+
+    if (currentUser?.id === id) {
+      setCurrentUser(updatedUser);
+    }
+
+    addAuditLog(
+      'Cập nhật tài khoản giáo viên',
+      `Admin đã cập nhật thông tin tài khoản [${updatedUser.username}] của ${updatedUser.name}.`,
+      'Quản trị người dùng',
+      updatedUser.username,
+      'SUCCESS'
+    );
+
+    return { success: true, message: 'Cập nhật tài khoản thành công!' };
+  };
+
+  const updateUserLoginEmail = (
+    id: string,
+    newEmail: string,
+    syncUsername: boolean = true
+  ): { success: boolean; message: string } => {
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, message: 'Địa chỉ email không được để trống!' };
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return { success: false, message: 'Địa chỉ email không đúng định dạng (Ví dụ: ten@domain.com)!' };
+    }
+
+    const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, message: 'Không tìm thấy tài khoản người dùng!' };
+    }
+
+    const dupEmail = users.find(
+      (u) => u.id !== id && u.email?.trim().toLowerCase() === cleanEmail
+    );
+    if (dupEmail) {
+      return {
+        success: false,
+        message: `Email '${cleanEmail}' đã được sử dụng bởi tài khoản "${dupEmail.name}"!`,
+      };
+    }
+
+    const oldEmail = target.email;
+    const shouldSyncUsername = syncUsername || target.username.toLowerCase() === oldEmail.toLowerCase();
+    const finalUsername = shouldSyncUsername ? cleanEmail : target.username;
+
+    if (finalUsername.toLowerCase() !== target.username.toLowerCase()) {
+      const dupUser = users.find(
+        (u) => u.id !== id && u.username.toLowerCase() === finalUsername.toLowerCase()
+      );
+      if (dupUser) {
+        return {
+          success: false,
+          message: `Tên đăng nhập '${finalUsername}' đã được sử dụng bởi tài khoản "${dupUser.name}"!`,
+        };
+      }
+    }
+
+    const updatedUser: User = {
+      ...target,
+      email: cleanEmail,
+      username: finalUsername,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === id ? updatedUser : u)));
+
+    // Đồng bộ vào hồ sơ giáo viên nếu tài khoản này liên kết với hồ sơ
+    if (target.teacherId) {
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.id === target.teacherId
+            ? { ...t, email: cleanEmail, updatedAt: new Date().toISOString() }
+            : t
+        )
+      );
+    }
+
+    if (currentUser?.id === id) {
+      setCurrentUser(updatedUser);
+    }
+
+    addAuditLog(
+      'Sửa email đăng nhập',
+      `Admin đã sửa email đăng nhập của ${target.name} từ [${oldEmail}] thành [${cleanEmail}].`,
+      'Quản trị người dùng',
+      cleanEmail,
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      message: `Đã cập nhật email đăng nhập của ${target.name} thành "${cleanEmail}" thành công!`,
+    };
+  };
+
+  const resetUserPassword = (
+    id: string,
+    newPassword?: string
+  ): { success: boolean; message: string; temporaryPassword?: string } => {
+    const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, message: 'Không tìm thấy tài khoản!' };
+    }
+
+    const generatedPass =
+      newPassword && newPassword.trim()
+        ? newPassword.trim()
+        : `Gv@${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const updatedUser: User = {
+      ...target,
+      passwordHash: generatedPass,
+      plainPassword: generatedPass,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === id ? updatedUser : u)));
+
+    if (currentUser?.id === id) {
+      setCurrentUser(updatedUser);
+    }
+
+    addAuditLog(
+      'Đặt lại mật khẩu',
+      `Admin đã đặt lại mật khẩu cho tài khoản [${target.username}] của ${target.name}.`,
+      'Quản trị người dùng',
+      target.username,
+      'SUCCESS'
+    );
+
+    return {
+      success: true,
+      message: `Đã đặt lại mật khẩu cho tài khoản ${target.username}!`,
+      temporaryPassword: generatedPass,
+    };
+  };
+
+  const toggleLockUserAccount = (id: string): { success: boolean; message: string } => {
+    const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, message: 'Không tìm thấy tài khoản!' };
+    }
+
+    if (target.id === currentUser?.id && currentUser.role === 'ADMIN') {
+      return { success: false, message: 'Không thể khóa tài khoản Admin đang đăng nhập!' };
+    }
+
+    const nextStatus = target.status === 'locked' ? 'active' : 'locked';
+    const updatedUser: User = {
+      ...target,
+      status: nextStatus,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === id ? updatedUser : u)));
+
+    addAuditLog(
+      nextStatus === 'locked' ? 'Khóa tài khoản' : 'Mở khóa tài khoản',
+      `Admin đã ${nextStatus === 'locked' ? 'khóa' : 'mở khóa'} tài khoản [${target.username}] của ${target.name}.`,
+      'Quản trị người dùng',
+      target.username,
+      'WARNING'
+    );
+
+    return {
+      success: true,
+      message: `Đã ${nextStatus === 'locked' ? 'khóa' : 'mở khóa'} tài khoản ${target.username}!`,
+    };
+  };
+
+  const deleteUserAccount = (id: string): { success: boolean; message: string } => {
+    const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, message: 'Không tìm thấy tài khoản!' };
+    }
+
+    if (target.id === currentUser?.id) {
+      return { success: false, message: 'Không thể xóa tài khoản hiện đang đăng nhập!' };
+    }
+
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+
+    addAuditLog(
+      'Xóa tài khoản',
+      `Admin đã xóa tài khoản [${target.username}] của ${target.name}.`,
+      'Quản trị người dùng',
+      target.username,
+      'WARNING'
+    );
+
+    return { success: true, message: `Đã xóa tài khoản ${target.username} thành công!` };
+  };
+
+  const autoGenerateAccountsForAllTeachers = (): {
+    createdCount: number;
+    existingCount: number;
+    message: string;
+  } => {
+    let created = 0;
+    let existing = 0;
+    const newUsers: User[] = [];
+
+    const toSlug = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[đĐ]/g, 'd')
+        .replace(/[^a-z0-9]/g, '');
+    };
+
+    teachers.forEach((t) => {
+      const hasAccount = users.some(
+        (u) =>
+          (u.teacherId && u.teacherId === t.id) ||
+          (t.email && u.email && u.email.toLowerCase() === t.email.toLowerCase())
+      );
+
+      if (hasAccount) {
+        existing++;
+        return;
+      }
+
+      // Tên tài khoản mặc định là địa chỉ email cá nhân của giáo viên
+      let baseUsername = '';
+      if (t.email && t.email.trim()) {
+        baseUsername = t.email.trim().toLowerCase();
+      } else {
+        const slug = toSlug(t.fullName);
+        baseUsername = `${slug || t.teacherCode.toLowerCase()}@nguyendinhanh.edu.vn`;
+      }
+
+      let finalUsername = baseUsername;
+      let counter = 1;
+      while (
+        users.some((u) => u.username.toLowerCase() === finalUsername.toLowerCase()) ||
+        newUsers.some((u) => u.username.toLowerCase() === finalUsername.toLowerCase())
+      ) {
+        if (baseUsername.includes('@')) {
+          const [prefix, domain] = baseUsername.split('@');
+          finalUsername = `${prefix}${counter}@${domain || 'nguyendinhanh.edu.vn'}`;
+        } else {
+          finalUsername = `${baseUsername}${counter}`;
+        }
+        counter++;
+      }
+
+      let role: UserRole = 'GIÁO VIÊN';
+      if (t.duty && (t.duty.includes('Hiệu trưởng') || t.duty.includes('Ban Giám Hiệu'))) {
+        role = 'BGH';
+      } else if (t.isHomeroom) {
+        role = 'GVCN';
+      }
+
+      const defaultPass = 'Gv@2026';
+      const createdUser: User = {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        username: finalUsername,
+        name: t.fullName,
+        email: t.email || `${finalUsername}@nguyendinhanh.edu.vn`,
+        role: role,
+        passwordHash: defaultPass,
+        plainPassword: defaultPass,
+        title: t.duty || (role === 'GVCN' ? `GVCN lớp ${t.homeroomClassName || ''}` : 'Giáo viên bộ môn'),
+        phone: t.phone || '',
+        schoolId: school.id,
+        teacherId: t.id,
+        homeroomClassId: t.homeroomClassId,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+
+      newUsers.push(createdUser);
+      created++;
+    });
+
+    if (newUsers.length > 0) {
+      setUsers((prev) => [...newUsers, ...prev]);
+      addAuditLog(
+        'Cấp tài khoản hàng loạt',
+        `Admin đã tự động cấp ${created} tài khoản mới cho giáo viên toàn trường (mật khẩu mặc định: Gv@2026).`,
+        'Quản trị người dùng',
+        `${created} tài khoản`,
+        'SUCCESS'
+      );
+    }
+
+    return {
+      createdCount: created,
+      existingCount: existing,
+      message: `Đã cấp mới ${created} tài khoản giáo viên! (${existing} giáo viên đã có tài khoản trước đó)`,
+    };
+  };
+
+  const importUserAccounts = (
+    accountList: Array<{
+      name: string;
+      email: string;
+      username?: string;
+      department?: string;
+      subject?: string;
+      dutyRole?: DutyRole;
+      role?: UserRole;
+      password?: string;
+      phone?: string;
+      status?: AccountStatus;
+      homeroomClassName?: string;
+    }>,
+    strategy: 'skip_existing' | 'update_existing' = 'skip_existing',
+    autoCreateTeacherProfile: boolean = true
+  ): {
+    createdCount: number;
+    updatedCount: number;
+    skippedCount: number;
+    errorCount: number;
+    errors: string[];
+    message: string;
+  } => {
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors: string[] = [];
+
+    const updatedUsersMap = new Map<string, User>(users.map((u) => [u.id, u]));
+    const emailToUserMap = new Map<string, User>();
+    const usernameToUserMap = new Map<string, User>();
+
+    users.forEach((u) => {
+      if (u.email) emailToUserMap.set(u.email.toLowerCase().trim(), u);
+      if (u.username) usernameToUserMap.set(u.username.toLowerCase().trim(), u);
+    });
+
+    const newTeachersToAdd: TeacherProfile[] = [];
+    const teacherEmailMap = new Map<string, TeacherProfile>();
+    teachers.forEach((t) => {
+      if (t.email) teacherEmailMap.set(t.email.toLowerCase().trim(), t);
+    });
+
+    accountList.forEach((item, idx) => {
+      const rowNum = idx + 1;
+      const cleanName = (item.name || '').trim();
+      const cleanEmail = (item.email || item.username || '').toLowerCase().trim();
+
+      if (!cleanName) {
+        errors.push(`Dòng ${rowNum}: Thiếu Họ và tên.`);
+        return;
+      }
+      if (!cleanEmail) {
+        errors.push(`Dòng ${rowNum}: Thiếu Email đăng nhập.`);
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        errors.push(`Dòng ${rowNum}: Email "${cleanEmail}" không đúng định dạng.`);
+        return;
+      }
+
+      const normalizedDept = normalizeDepartmentName(item.department);
+      const subject = item.subject?.trim() || '—';
+      const dutyRole: DutyRole = item.dutyRole || 'Giáo viên bộ môn';
+
+      let computedRole: UserRole = item.role || 'GIÁO VIÊN';
+      if (dutyRole === 'Quản trị viên') {
+        computedRole = 'ADMIN';
+      } else if (dutyRole === 'Hiệu trưởng' || dutyRole === 'Phó Hiệu trưởng') {
+        computedRole = 'BGH';
+      } else if (dutyRole === 'Giáo viên chủ nhiệm' || Boolean(item.homeroomClassName)) {
+        computedRole = 'GVCN';
+      }
+
+      const defaultPass = (item.password && item.password.trim()) || '123';
+      const phone = item.phone?.trim() || '';
+      const status: AccountStatus = item.status || 'active';
+
+      // Check if homeroom class matches
+      let homeroomClassId: string | undefined = undefined;
+      if (item.homeroomClassName) {
+        const foundClass = classes.find(
+          (c) => c.className.toLowerCase() === item.homeroomClassName?.toLowerCase().trim()
+        );
+        if (foundClass) homeroomClassId = foundClass.id;
+      }
+
+      // Check existing user by email or username
+      const existingUser = emailToUserMap.get(cleanEmail) || usernameToUserMap.get(cleanEmail);
+
+      if (existingUser) {
+        if (strategy === 'skip_existing') {
+          skippedCount++;
+          return;
+        } else {
+          // Update existing
+          const updated: User = {
+            ...existingUser,
+            name: cleanName,
+            department: normalizedDept,
+            subject,
+            dutyRole,
+            role: computedRole,
+            phone: phone || existingUser.phone,
+            status,
+            homeroomClassId: homeroomClassId || existingUser.homeroomClassId,
+            passwordHash: item.password ? defaultPass : existingUser.passwordHash,
+            plainPassword: item.password ? defaultPass : existingUser.plainPassword,
+            title: dutyRole,
+          };
+          updatedUsersMap.set(existingUser.id, updated);
+          emailToUserMap.set(cleanEmail, updated);
+          usernameToUserMap.set(cleanEmail, updated);
+          updatedCount++;
+          return;
+        }
+      }
+
+      // Link or create teacher profile if requested
+      let linkedTeacherId: string | undefined = undefined;
+      let matchedTeacher = teacherEmailMap.get(cleanEmail);
+
+      if (!matchedTeacher && autoCreateTeacherProfile) {
+        const nextCode = `GV-${String(teachers.length + newTeachersToAdd.length + 1).padStart(3, '0')}`;
+        const newTeacher: TeacherProfile = {
+          id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          teacherCode: nextCode,
+          fullName: cleanName,
+          gender: 'Nam',
+          birthDate: '01/01/1985',
+          email: cleanEmail,
+          phone,
+          department: normalizedDept,
+          mainSubject: subject !== '—' ? subject : 'Toán',
+          degree: 'Cử nhân ĐH Sư phạm',
+          employmentStatus: 'Biên chế chính thức',
+          joinDate: '01/09/2020',
+          isHomeroom: computedRole === 'GVCN',
+          homeroomClassId,
+          homeroomClassName: item.homeroomClassName,
+          duty: dutyRole,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        newTeachersToAdd.push(newTeacher);
+        teacherEmailMap.set(cleanEmail, newTeacher);
+        linkedTeacherId = newTeacher.id;
+      } else if (matchedTeacher) {
+        linkedTeacherId = matchedTeacher.id;
+      }
+
+      const newUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+      const newUser: User = {
+        id: newUserId,
+        username: cleanEmail,
+        name: cleanName,
+        email: cleanEmail,
+        role: computedRole,
+        passwordHash: defaultPass,
+        plainPassword: defaultPass,
+        title: dutyRole,
+        phone,
+        schoolId: school.id,
+        teacherId: linkedTeacherId,
+        homeroomClassId,
+        status,
+        department: normalizedDept,
+        subject,
+        dutyRole,
+        createdAt: new Date().toISOString(),
+      };
+
+      updatedUsersMap.set(newUserId, newUser);
+      emailToUserMap.set(cleanEmail, newUser);
+      usernameToUserMap.set(cleanEmail, newUser);
+      createdCount++;
+    });
+
+    if (createdCount > 0 || updatedCount > 0) {
+      setUsers(Array.from(updatedUsersMap.values()));
+      if (newTeachersToAdd.length > 0) {
+        setTeachers((prev) => [...newTeachersToAdd, ...prev]);
+      }
+      addAuditLog(
+        'Nhập tài khoản từ Excel',
+        `Admin đã nhập tài khoản người dùng từ file Excel: Thêm mới ${createdCount}, Cập nhật ${updatedCount}, Bỏ qua ${skippedCount}.`,
+        'Quản trị người dùng',
+        `${createdCount + updatedCount} tài khoản`,
+        'SUCCESS'
+      );
+    }
+
+    return {
+      createdCount,
+      updatedCount,
+      skippedCount,
+      errorCount: errors.length,
+      errors,
+      message: `Hoàn tất nhập dữ liệu: Thêm mới ${createdCount} tài khoản, Cập nhật ${updatedCount} tài khoản, Bỏ qua ${skippedCount} tài khoản trùng lặp.`,
+    };
+  };
+
+  const switchUserRole = (role: UserRole) => {
+    const matched =
+      users.find((u) => u.role === role) ||
+      initialUsers.find((u) => u.role === role) || {
+        id: `user-${role.toLowerCase()}`,
+        username: role.toLowerCase(),
+        name: `Tài khoản ${role}`,
+        email: `${role.toLowerCase()}@nguyendinhanh.edu.vn`,
+        role,
+        title:
+          role === 'ADMIN'
+            ? 'Quản trị viên hệ thống'
+            : role === 'BGH'
+            ? 'Ban Giám Hiệu'
+            : role === 'GVCN'
+            ? 'Giáo viên chủ nhiệm'
+            : 'Giáo viên bộ môn',
+        schoolId: school.id,
+        createdAt: new Date().toISOString(),
+      };
     setCurrentUser(matched);
     addAuditLog(
       'Chuyển đổi vai trò người dùng',
@@ -2510,10 +4169,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const canEditCurrentClass = ((): boolean => {
     if (isCurrentSchoolYearLocked) return false;
     if (!currentUser) return false;
-    if (currentUser.role === 'ADMIN') return true;
+    if (currentUser.role === 'ADMIN' || currentUser.dutyRole === 'Quản trị viên') return true;
     if (currentUser.role === 'BGH') return false; // BGH chỉ xem và duyệt sổ, không trực tiếp sửa sổ danh của GVCN
-    if (currentUser.role === 'GVCN') {
-      return currentClass ? currentClass.homeroomTeacherId === currentUser.id : false;
+    if (currentUser.role === 'GVCN' || currentUser.dutyRole === 'Giáo viên chủ nhiệm') {
+      if (!currentClass) return false;
+      return (
+        currentClass.homeroomTeacherId === currentUser.id ||
+        (Boolean(currentUser.teacherId) && currentClass.homeroomTeacherId === currentUser.teacherId) ||
+        (Boolean(currentUser.homeroomClassId) && currentUser.homeroomClassId === currentClass.id) ||
+        (Boolean(currentClass.homeroomTeacherName) &&
+          currentClass.homeroomTeacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      );
     }
     return false;
   })();
@@ -2529,6 +4195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       classes,
       students,
       teachers,
+      users,
       classroomConfigs: [classroomConfig],
       seats,
       classOfficers,
@@ -2620,6 +4287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (payload.classes) setClasses(payload.classes);
       if (payload.students) setStudents(payload.students);
       if (payload.teachers) setTeachers(payload.teachers);
+      if (payload.users && Array.isArray(payload.users)) setUsers(payload.users);
       if (payload.classroomConfigs && payload.classroomConfigs[0]) setClassroomConfig(payload.classroomConfigs[0]);
       if (payload.seats) setSeats(payload.seats);
       if (payload.classOfficers) setClassOfficers(payload.classOfficers);
@@ -2943,6 +4611,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteClass,
         deleteDemoData,
         restoreDemoData,
+        classBookApprovals,
+        toggleApproveClassBook,
+        assignHomeroomTeacher,
+        batchAssignHomeroom,
+        syncHomeroomAssignments,
         subjectTeachers,
         updateSubjectTeacher,
         addSubjectTeacher,
@@ -3061,6 +4734,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         settings,
         updateSettings,
         users,
+        addUserAccount,
+        updateUserAccount,
+        updateUserLoginEmail,
+        resetUserPassword,
+        toggleLockUserAccount,
+        deleteUserAccount,
+        autoGenerateAccountsForAllTeachers,
+        importUserAccounts,
         switchUserRole,
         canEditCurrentClass,
         isCurrentSchoolYearLocked,

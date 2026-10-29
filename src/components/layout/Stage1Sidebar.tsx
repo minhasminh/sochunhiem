@@ -19,6 +19,7 @@ import {
   Clock,
   GraduationCap,
   Layers,
+  KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { MainMenuItem } from '../../types';
@@ -54,6 +55,7 @@ export const Stage1Sidebar: React.FC = () => {
       title: 'QUẢN TRỊ NHÂN SỰ & HỌC SINH',
       roles: ['ADMIN'],
       items: [
+        { id: 'accounts', label: 'Quản lý tài khoản', icon: KeyRound, isReady: true },
         { id: 'teachers', label: 'Hồ sơ GV toàn trường', icon: GraduationCap, isReady: true },
         { id: 'departments', label: 'Tổ chuyên môn', icon: Layers, isReady: true },
         { id: 'students', label: 'Hồ sơ HS toàn trường', icon: Users, isReady: true },
@@ -163,7 +165,7 @@ export const Stage1Sidebar: React.FC = () => {
       roles: ['GVCN', 'GIÁO VIÊN', 'GVBM'],
       items: [
         { id: 'reports', label: 'Báo cáo & Sơ kết sổ', icon: FileText, isReady: true },
-        { id: 'print-book', label: 'In Sổ Chủ Nhiệm (GĐ9)', icon: Printer, isReady: true },
+        { id: 'print-book', label: 'In Sổ Chủ Nhiệm', icon: Printer, isReady: true },
         { id: 'ai-assistant', label: 'Trợ lý AI GVCN', icon: Sparkles, isReady: true },
       ],
     },

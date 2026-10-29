@@ -1,5 +1,65 @@
 export type UserRole = 'ADMIN' | 'BGH' | 'GVCN' | 'GIÁO VIÊN' | 'GVBM';
 
+export type DutyRole =
+  | 'Quản trị viên'
+  | 'Hiệu trưởng'
+  | 'Phó Hiệu trưởng'
+  | 'Tổ trưởng'
+  | 'Tổ phó'
+  | 'Giáo viên chủ nhiệm'
+  | 'Giáo viên bộ môn'
+  | 'Nhân viên';
+
+export type AccountStatus = 'active' | 'pending' | 'locked';
+
+export const DEPARTMENT_OPTIONS = [
+  'Tổ 1-2-3',
+  'Tổ 4-5',
+  'Tổ khoa học tự nhiên',
+  'Tổ khoa học xã hội',
+  'Tổ Tiếng Anh-GDTC',
+] as const;
+
+export const SUBJECT_OPTIONS = [
+  '—',
+  'Toán',
+  'Ngữ văn',
+  'Tiếng Anh',
+  'Khoa học tự nhiên',
+  'Lịch sử và Địa lí',
+  'Giáo dục công dân',
+  'Tin học',
+  'Công nghệ',
+  'Giáo dục thể chất',
+  'Âm nhạc',
+  'Mĩ thuật',
+  'Hoạt động trải nghiệm, hướng nghiệp',
+  'Giáo dục địa phương',
+  'Tiếng Việt (Tiểu học)',
+  'Toán (Tiểu học)',
+  'Tự nhiên và Xã hội',
+  'Lịch sử và Địa lí (Tiểu học)',
+  'Khoa học (Tiểu học)',
+  'Đạo đức',
+  'Tin học và Công nghệ (Tiểu học)',
+  'Tiếng Anh (Tiểu học)',
+  'Giáo dục thể chất (Tiểu học)',
+  'Âm nhạc (Tiểu học)',
+  'Mĩ thuật (Tiểu học)',
+  'Hoạt động trải nghiệm (Tiểu học)',
+] as const;
+
+export const DUTY_ROLE_OPTIONS: DutyRole[] = [
+  'Quản trị viên',
+  'Hiệu trưởng',
+  'Phó Hiệu trưởng',
+  'Tổ trưởng',
+  'Tổ phó',
+  'Giáo viên chủ nhiệm',
+  'Giáo viên bộ môn',
+  'Nhân viên',
+];
+
 export interface User {
   id: string;
   username: string; // Email hoặc mã đăng nhập
@@ -7,10 +67,18 @@ export interface User {
   email: string;
   role: UserRole;
   passwordHash?: string;
+  plainPassword?: string; // Mật khẩu hiển thị cho Admin khi bàn giao tài khoản
   title: string;
   phone?: string;
   avatar?: string;
   schoolId: string;
+  teacherId?: string; // Khóa ngoại liên kết hồ sơ giáo viên
+  homeroomClassId?: string; // Lớp chủ nhiệm được phân công (nếu là GVCN)
+  status?: AccountStatus; // Trạng thái: 'active' (Hoạt động) | 'pending' (Chưa kích hoạt) | 'locked' (Bị khóa)
+  department?: string; // Tổ chuyên môn/bộ phận
+  subject?: string; // Bộ môn giảng dạy
+  dutyRole?: DutyRole; // Vai trò chức danh
+  lastLogin?: string;
   createdAt: string;
 }
 
@@ -40,12 +108,15 @@ export interface SchoolYear {
 
 export type StudyShift = 'Buổi sáng' | 'Buổi chiều' | 'Cả ngày';
 
+export const GRADE_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
+export type GradeLevel = (typeof GRADE_OPTIONS)[number];
+
 export interface ClassEntity {
   id: string;
   schoolId: string;
   schoolYearId: string;
-  grade: string; // 6, 7, 8, 9
-  className: string; // 7/1
+  grade: string; // 1, 2, 3, 4, 5, 6, 7, 8, 9 (Tiểu học & THCS)
+  className: string; // VD: 1/1, 2/1, 3/1, 4/1, 5/1, 6/1, 7/1...
   homeroomTeacherId: string;
   homeroomTeacherName: string;
   roomNumber: string; // Phòng học: P.204
@@ -59,6 +130,18 @@ export interface ClassEntity {
   isDemo: boolean; // Đánh dấu DỮ LIỆU DEMO
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HomeroomSyncResult {
+  success: boolean;
+  totalClasses: number;
+  syncedClassesCount: number;
+  unassignedClasses: string[]; // Tên các lớp chưa phân công GVCN
+  conflicts: string[]; // Cảnh báo trùng lặp GVCN
+  updatedTeachersCount: number;
+  updatedUsersCount: number;
+  message: string;
+  timestamp: string;
 }
 
 export interface SystemSettings {
@@ -89,6 +172,7 @@ export type MainMenuItem =
   | 'dashboard'
   | 'class-info'
   | 'teachers'
+  | 'accounts'
   | 'departments'
   | 'students'
   | 'seating-chart'
@@ -107,8 +191,8 @@ export type MainMenuItem =
 
 export interface AcademicDepartment {
   id: string;
-  code: string; // Mã tổ: "TCM-TT"
-  name: string; // Tên tổ: "Tổ Toán - Tin học"
+  code: string; // Mã tổ: "TCM-KHTN"
+  name: string; // Tên tổ: "Tổ 1-2-3", "Tổ 4-5", "Tổ khoa học tự nhiên", "Tổ khoa học xã hội", "Tổ Tiếng Anh-GDTC"
   description?: string;
   leaderTeacherId: string; // ID Tổ trưởng chuyên môn
   leaderTeacherName: string;
@@ -209,7 +293,7 @@ export interface TeacherProfile {
   email: string;
   phone: string;
   idCardNumber?: string;
-  department: string; // Tổ chuyên môn: "Toán - Tin", "Ngữ văn - KHXH", "KHTN - Công nghệ", "Tiếng Anh", "Nghệ thuật - GDTC"
+  department: string; // Tổ chuyên môn: "Tổ 1-2-3", "Tổ 4-5", "Tổ khoa học tự nhiên", "Tổ khoa học xã hội", "Tổ Tiếng Anh-GDTC"
   mainSubject: string; // Môn giảng dạy chính
   secondarySubject?: string;
   degree: AcademicDegree;
@@ -724,6 +808,7 @@ export interface SystemBackupPayload {
   classes: ClassEntity[];
   students: Student[];
   teachers?: TeacherProfile[];
+  users?: User[];
   classroomConfigs: ClassroomConfig[];
   seats: DeskSeat[];
   classOfficers: ClassOfficer[];
@@ -814,6 +899,17 @@ export interface TestingChecklistItem {
   testedAt?: string;
   testerNotes?: string;
 }
+
+// 6. Phê duyệt Sổ Chủ Nhiệm của Ban Giám Hiệu / Hiệu trưởng
+export interface ClassBookApproval {
+  classId: string;
+  isApproved: boolean;
+  approvedBy: string;
+  approvedRole: string;
+  approvedDate: string;
+  reviewComment: string;
+}
+
 
 
 

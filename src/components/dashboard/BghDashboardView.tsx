@@ -31,6 +31,7 @@ export const BghDashboardView: React.FC = () => {
     classes,
     currentClass,
     selectClass,
+    classBookApprovals,
     students,
     currentUser,
     setActiveMenu,
@@ -139,7 +140,7 @@ export const BghDashboardView: React.FC = () => {
           <div>
             <div className="text-[11px] font-bold uppercase text-slate-400">Quy mô trường học</div>
             <div className="text-2xl font-black text-slate-900">{activeClasses.length} lớp</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Khối 6, 7, 8, 9</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Khối 1 – 9 (Tiểu học & THCS)</div>
           </div>
         </div>
 
@@ -252,26 +253,44 @@ export const BghDashboardView: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3 px-3">
-                      {isHk1Locked && hasFullData ? (
-                        <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold text-[10px]">
-                          ✓ Đã duyệt HKI
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px]">
-                          Chờ ký duyệt
-                        </span>
-                      )}
+                      {(() => {
+                        const clsApproval = classBookApprovals?.find((a) => a.classId === cls.id);
+                        if (clsApproval?.isApproved) {
+                          return (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1 w-max">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Đã duyệt ({clsApproval.approvedDate || 'BGH'})
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-semibold text-[10px] border border-amber-200">
+                            Chờ Hiệu trưởng duyệt
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => {
-                          selectClass(cls.id);
-                          setActiveMenu('reports');
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] transition-colors cursor-pointer"
-                      >
-                        Kiểm tra & Ký duyệt
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => {
+                            selectClass(cls.id);
+                            setActiveMenu('print-book');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                          title={`Xem toàn bộ Sổ Chủ Nhiệm lớp ${cls.className}`}
+                        >
+                          <BookOpen className="w-3 h-3" /> Xem Sổ
+                        </button>
+                        <button
+                          onClick={() => {
+                            selectClass(cls.id);
+                            setActiveMenu('reports');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] transition-colors cursor-pointer"
+                        >
+                          Báo cáo
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

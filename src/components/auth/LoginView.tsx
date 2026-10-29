@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
-import { BookOpen, Lock, Mail, User, Eye, EyeOff, AlertCircle, CheckCircle2, ShieldCheck, GraduationCap } from 'lucide-react';
+import {
+  BookOpen,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Shield,
+  HelpCircle,
+} from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const LoginView: React.FC = () => {
   const { login } = useApp();
-  const [account, setAccount] = useState('leducminh');
-  const [password, setPassword] = useState('123');
+  const [account, setAccount] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSupportInfo, setShowSupportInfo] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,18 +37,12 @@ export const LoginView: React.FC = () => {
     setIsLoading(true);
 
     setTimeout(() => {
-      const res = login(account, password, rememberMe);
+      const res = login(account.trim(), password, rememberMe);
       setIsLoading(false);
       if (!res.success) {
         setErrorMessage(res.message || 'Tài khoản hoặc mật khẩu không chính xác.');
       }
-    }, 400);
-  };
-
-  const handleSelectQuickAccount = (userAccount: string, pass: string) => {
-    setAccount(userAccount);
-    setPassword(pass);
-    setErrorMessage(null);
+    }, 250);
   };
 
   return (
@@ -57,8 +61,23 @@ export const LoginView: React.FC = () => {
             SỔ CHỦ NHIỆM ĐIỆN TỬ
           </h1>
           <p className="text-xs text-slate-500 max-w-xs mx-auto">
-            Hệ thống quản lý công tác chủ nhiệm lớp THCS chuẩn hóa theo Thông tư Bộ GD&ĐT
+            Hệ thống quản lý công tác chủ nhiệm trường TH&THCS Nguyễn Đình Anh
           </p>
+        </div>
+
+        {/* Official Portal Notice */}
+        <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-2.5 text-xs text-slate-700 shadow-2xs">
+          <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Shield className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-[11px] uppercase tracking-wide text-slate-800">
+              Cổng Đăng Nhập Sổ Chủ Nhiệm
+            </div>
+            <div className="text-[11px] text-slate-500 truncate">
+              Vận hành chính thức • Bảo mật tài khoản cá nhân
+            </div>
+          </div>
         </div>
 
         {/* Error Alert */}
@@ -73,15 +92,15 @@ export const LoginView: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Email hoặc Tài khoản đăng nhập
+              Email hoặc Tên đăng nhập
             </label>
             <div className="relative">
-              <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 required
                 autoComplete="username"
-                placeholder="Ví dụ: leducminh hoặc gvcn@nguyendinhanh.edu.vn"
+                placeholder="Nhập email hoặc tên tài khoản được cấp..."
                 value={account}
                 onChange={(e) => setAccount(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:outline-hidden transition-all"
@@ -99,7 +118,7 @@ export const LoginView: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 required
                 autoComplete="current-password"
-                placeholder="Nhập mật khẩu (Demo: 123)"
+                placeholder="Nhập mật khẩu..."
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:outline-hidden transition-all"
@@ -107,14 +126,15 @@ export const LoginView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="p-1.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-hidden"
+                className="p-1.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-hidden cursor-pointer"
+                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
-          {/* Remember Me */}
+          {/* Remember Me & Help link */}
           <div className="flex items-center justify-between text-xs pt-1">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
@@ -125,8 +145,25 @@ export const LoginView: React.FC = () => {
               />
               <span className="text-slate-600 font-medium">Ghi nhớ đăng nhập</span>
             </label>
-            <span className="text-slate-400 text-[11px]">Bảo mật SSL 256-bit</span>
+            <button
+              type="button"
+              onClick={() => setShowSupportInfo(!showSupportInfo)}
+              className="text-slate-500 hover:text-sky-700 hover:underline flex items-center gap-1 cursor-pointer font-medium"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Hỗ trợ kỹ thuật</span>
+            </button>
           </div>
+
+          {/* Support guidance accordion */}
+          {showSupportInfo && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 space-y-1 animate-fade-in">
+              <div className="font-bold text-slate-800">Quên mật khẩu hoặc cần cấp tài khoản?</div>
+              <div>
+                Vui lòng liên hệ Ban Giám Hiệu hoặc Tổ Quản trị mạng nhà trường để được hỗ trợ cấp lại mật khẩu bảo mật.
+              </div>
+            </div>
+          )}
 
           {/* Submit Button */}
           <button
@@ -141,44 +178,10 @@ export const LoginView: React.FC = () => {
           </button>
         </form>
 
-        {/* Quick Demo Accounts Selection */}
-        <div className="pt-4 border-t border-slate-100 space-y-2">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center">
-            Chọn nhanh tài khoản thử nghiệm
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => handleSelectQuickAccount('leducminh', '123')}
-              className="p-2 rounded-xl border border-slate-200 hover:border-sky-400 hover:bg-sky-50 text-slate-700 text-center transition-all group"
-            >
-              <div className="font-bold text-sky-700 group-hover:text-sky-800">GVCN</div>
-              <div className="text-[10px] text-slate-500 truncate">Lê Đức Minh</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSelectQuickAccount('phanducquy', '123')}
-              className="p-2 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 text-center transition-all group"
-            >
-              <div className="font-bold text-amber-700 group-hover:text-amber-800">BGH</div>
-              <div className="text-[10px] text-slate-500 truncate">Phan Đức Quý</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSelectQuickAccount('admin', '123')}
-              className="p-2 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50 text-slate-700 text-center transition-all group"
-            >
-              <div className="font-bold text-purple-700 group-hover:text-purple-800">ADMIN</div>
-              <div className="text-[10px] text-slate-500 truncate">Quản trị viên</div>
-            </button>
-          </div>
-        </div>
-
         {/* Footer info */}
-        <div className="text-center text-[11px] text-slate-400 pt-1">
-          Trường TH&THCS Nguyễn Đình Anh • Năm học 2026–2027
+        <div className="pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400 space-y-1">
+          <div className="font-semibold text-slate-500">Trường TH&THCS Nguyễn Đình Anh</div>
+          <div>Cơ sở dữ liệu Vận hành chính thức • Năm học 2026–2027</div>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Users,
@@ -33,6 +33,16 @@ export const ClassPromotionMasterView: React.FC = () => {
   const [targetGrade, setTargetGrade] = useState('8');
   const [targetRoomNumber, setTargetRoomNumber] = useState('Phòng 304 (Dãy B)');
   const [studyShift, setStudyShift] = useState<'Buổi sáng' | 'Buổi chiều' | 'Cả ngày'>('Buổi sáng');
+
+  useEffect(() => {
+    if (currentClass) {
+      const currentG = parseInt(currentClass.grade) || 7;
+      const nextG = currentG < 9 ? currentG + 1 : currentG;
+      const section = currentClass.className.includes('/') ? currentClass.className.split('/')[1] : '1';
+      setTargetGrade(String(nextG));
+      setTargetClassName(`${nextG}/${section}`);
+    }
+  }, [currentClass]);
 
   // Retention Options
   const [keepProfiles, setKeepProfiles] = useState(true);

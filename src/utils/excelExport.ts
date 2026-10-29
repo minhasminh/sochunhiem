@@ -12,6 +12,7 @@ import {
   ClassEntity,
   SchoolYear,
   School,
+  TeacherProfile,
 } from '../types';
 
 /**
@@ -815,5 +816,110 @@ export function exportAllDataToSingleWorkbook(
   downloadWorkbook(
     workbook,
     `So_Chu_Nhiem_Toan_Dien_Lop_${currentClass!.className}_${currentSchoolYear.code}.xlsx`
+  );
+}
+
+// ================= 10. XUẤT BẢNG PHÂN CÔNG GIÁO VIÊN CHỦ NHIỆM =================
+export function exportHomeroomAssignmentsToExcel(
+  classes: ClassEntity[],
+  teachers: TeacherProfile[],
+  currentSchoolYear: SchoolYear,
+  school: School
+) {
+  const activeYearClasses = classes
+    .filter((c) => c.schoolYearId === currentSchoolYear.id)
+    .sort((a, b) => {
+      const ga = parseInt(a.grade) || 0;
+      const gb = parseInt(b.grade) || 0;
+      if (ga !== gb) return ga - gb;
+      return a.className.localeCompare(b.className, 'vi', { numeric: true });
+    });
+
+  const teacherMap = new Map<string, TeacherProfile>();
+  teachers.forEach((t) => teacherMap.set(t.id, t));
+
+  const metaRows = [
+    [school.name.toUpperCase()],
+    [`BẢNG PHÂN CÔNG & ĐỒNG BỘ GIÁO VIÊN CHỦ NHIỆM LỚP HỌC - NĂM HỌC ${currentSchoolYear.name}`],
+    [
+      `Tổng số lớp: ${activeYearClasses.length} lớp | Đã phân công: ${
+        activeYearClasses.filter((c) => c.homeroomTeacherName).length
+      } lớp | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`,
+    ],
+    [],
+  ];
+
+  const headers = [
+    'STT',
+    'Cấp học',
+    'Khối lớp',
+    'Tên lớp',
+    'Mã GVCN',
+    'Họ và tên GVCN',
+    'Giới tính',
+    'Tổ chuyên môn',
+    'Môn giảng dạy',
+    'Số điện thoại',
+    'Email liên hệ',
+    'Phòng học',
+    'Ca học',
+    'Sĩ số học sinh',
+    'Trạng thái phân công',
+    'Ghi chú',
+  ];
+
+  const dataRows = activeYearClasses.map((cls, idx) => {
+    const isPrimary = ['1', '2', '3', '4', '5'].includes(cls.grade);
+    const teacher = cls.homeroomTeacherId ? teacherMap.get(cls.homeroomTeacherId) : undefined;
+    const isAssigned = Boolean(cls.homeroomTeacherName && cls.homeroomTeacherName.trim());
+
+    return [
+      idx + 1,
+      isPrimary ? 'Tiểu học' : 'THCS',
+      `Khối ${cls.grade}`,
+      cls.className,
+      teacher?.teacherCode || '',
+      cls.homeroomTeacherName || 'Chưa phân công',
+      teacher?.gender || '',
+      teacher?.department || '',
+      teacher?.mainSubject || '',
+      teacher?.phone || '',
+      teacher?.email || '',
+      cls.roomNumber || '',
+      cls.studyShift || 'Buổi sáng',
+      cls.studentCount || 0,
+      isAssigned ? 'Đã phân công (Đồng bộ)' : 'Chưa phân công',
+      cls.notes || '',
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([...metaRows, headers, ...dataRows]);
+
+  // Adjust column widths
+  ws['!cols'] = [
+    { wch: 6 },  // STT
+    { wch: 12 }, // Cấp học
+    { wch: 10 }, // Khối
+    { wch: 10 }, // Tên lớp
+    { wch: 12 }, // Mã GV
+    { wch: 24 }, // Họ tên GVCN
+    { wch: 10 }, // Giới tính
+    { wch: 22 }, // Tổ chuyên môn
+    { wch: 18 }, // Môn
+    { wch: 15 }, // SĐT
+    { wch: 26 }, // Email
+    { wch: 16 }, // Phòng
+    { wch: 14 }, // Ca học
+    { wch: 10 }, // Sĩ số
+    { wch: 22 }, // Trạng thái
+    { wch: 24 }, // Ghi chú
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, ws, 'Phân Công GVCN');
+
+  downloadWorkbook(
+    workbook,
+    `Bang_Phan_Cong_GVCN_${currentSchoolYear.code}_${school.name.replace(/\s+/g, '_')}.xlsx`
   );
 }

@@ -21,6 +21,7 @@ import {
   Lock,
   Unlock,
   GraduationCap,
+  KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
@@ -38,6 +39,7 @@ export const AdminDashboardView: React.FC = () => {
     students,
     teachers,
     departments,
+    users,
     currentUser,
     setActiveMenu,
     auditLogs,
@@ -101,6 +103,12 @@ export const AdminDashboardView: React.FC = () => {
               className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-purple-600/30 cursor-pointer"
             >
               <GraduationCap className="w-4 h-4" /> Hồ sơ GV toàn trường
+            </button>
+            <button
+              onClick={() => setActiveMenu('teachers')}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-amber-500/30 cursor-pointer"
+            >
+              <KeyRound className="w-4 h-4" /> Cấp tài khoản & MK ({users.length}/{teachers.length})
             </button>
             <button
               onClick={() => setActiveMenu('departments')}
@@ -393,6 +401,43 @@ export const AdminDashboardView: React.FC = () => {
               className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Layers className="w-3.5 h-3.5 text-indigo-600" /> Chi tiết & Phân công tổ chuyên môn →
+            </button>
+          </div>
+
+          {/* Teacher Account Provisioning Widget */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-amber-600" />
+                Cấp tài khoản & Mật khẩu GV
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                ADMIN
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Khởi tạo tài khoản đăng nhập với tên tài khoản mặc định là địa chỉ email cá nhân, cấp mật khẩu ban đầu, phân quyền GVCN/GVBM và in phiếu bàn giao.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-3 bg-purple-50 rounded-2xl border border-purple-100">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Đã cấp tài khoản</div>
+                <div className="text-lg font-black text-purple-900">{users.length} tài khoản</div>
+              </div>
+              <div className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Chưa cấp</div>
+                <div className="text-lg font-black text-amber-900">
+                  {Math.max(0, teachers.length - users.filter((u) => u.teacherId).length)} GV
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveMenu('teachers')}
+              className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" /> Quản lý cấp tài khoản giáo viên →
             </button>
           </div>
 

@@ -41,11 +41,11 @@ interface ParsedTeacherRow {
 }
 
 const DEPARTMENT_LIST = [
-  'Toán - Tin',
-  'Ngữ văn - KHXH',
-  'KHTN - Công nghệ',
-  'Ngoại ngữ - Nghệ thuật',
-  'Ban Giám Hiệu',
+  'Tổ 1-2-3',
+  'Tổ 4-5',
+  'Tổ khoa học tự nhiên',
+  'Tổ khoa học xã hội',
+  'Tổ Tiếng Anh-GDTC',
 ];
 
 const DEGREE_LIST: AcademicDegree[] = [
@@ -198,7 +198,7 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
         normalizeKey(d).includes(normalizeKey(rawDept)) || normalizeKey(rawDept).includes(normalizeKey(d))
       );
       if (!dept) {
-        dept = rawDept || activeDeptNames[0] || 'Toán - Tin';
+        dept = rawDept || activeDeptNames[0] || 'Tổ khoa học tự nhiên';
       }
 
       // Degree normalization
@@ -337,7 +337,7 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
       '0905112233',
       'thanhtung.gv@gmail.com',
       '046088001234',
-      'Toán - Tin',
+      'Tổ khoa học tự nhiên',
       'Toán',
       'Tin học',
       'Thạc sĩ',
@@ -357,7 +357,7 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
       '0914556677',
       'mailan.phan@gmail.com',
       '046092005678',
-      'Ngữ văn - KHXH',
+      'Tổ khoa học xã hội',
       'Ngữ văn',
       'Lịch sử',
       'Cử nhân ĐH Sư phạm',
@@ -377,8 +377,8 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
       '0988776655',
       'quochung.le@gmail.com',
       '046095009988',
-      'KHTN - Công nghệ',
-      'KHTN',
+      'Tổ khoa học tự nhiên',
+      'Khoa học tự nhiên',
       'Hóa học',
       'Cử nhân Đại học',
       'Hợp đồng',
@@ -397,7 +397,7 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
       '0935998877',
       'hoangyen.tran@gmail.com',
       '046094007766',
-      'Ngoại ngữ - Nghệ thuật',
+      'Tổ Tiếng Anh-GDTC',
       'Tiếng Anh',
       '',
       'Thạc sĩ',
@@ -470,7 +470,7 @@ export const TeacherExcelImportModal: React.FC<TeacherExcelImportModalProps> = (
       '0905112233',
       'thanhtung.gv@gmail.com',
       '046088001234',
-      'Toán - Tin',
+      'Tổ khoa học tự nhiên',
       'Toán',
       'Tin học',
       'Thạc sĩ',

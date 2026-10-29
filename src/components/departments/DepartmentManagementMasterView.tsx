@@ -936,7 +936,7 @@ export const DepartmentManagementMasterView: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="VD: Tổ Toán - Tin học"
+                    placeholder="VD: Tổ 1-2-3, Tổ khoa học tự nhiên..."
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-hidden font-bold"

@@ -53,7 +53,10 @@ export const StudentListView: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Student | null>(null);
 
-  const isAuthorized = canEditCurrentClass;
+  const isAuthorized =
+    canEditCurrentClass ||
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.dutyRole === 'Quản trị viên';
 
   // Filter students
   const filteredStudents = currentClassStudents
@@ -223,10 +226,12 @@ export const StudentListView: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowImportModal(true)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+                className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="Nhập danh sách học sinh từ file Excel (.xlsx, .xls, .csv)"
               >
-                <Upload className="w-4 h-4 text-slate-600" /> Nhập từ Excel
+                <FileSpreadsheet className="w-4 h-4 text-indigo-700" /> Nhập từ Excel
               </button>
             </>
           )}

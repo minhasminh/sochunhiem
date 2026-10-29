@@ -17,7 +17,6 @@ import {
   Layers,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { UserRole } from '../../types';
 
 export const Stage1Header: React.FC = () => {
   const {
@@ -35,7 +34,6 @@ export const Stage1Header: React.FC = () => {
     setActiveMenu,
     isCurrentSchoolYearLocked,
     canEditCurrentClass,
-    switchUserRole,
   } = useApp();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -64,8 +62,8 @@ export const Stage1Header: React.FC = () => {
                 <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight uppercase truncate">
                   SỔ CHỦ NHIỆM ĐIỆN TỬ
                 </h1>
-                <span className="hidden md:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
-                  Giai đoạn 1 - 10 Hoàn thiện
+                <span className="hidden md:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Vận hành chính thức
                 </span>
                 {isCurrentSchoolYearLocked && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
@@ -104,18 +102,42 @@ export const Stage1Header: React.FC = () => {
           </div>
 
           {/* Class Selector */}
-          <div className="hidden md:flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs">
-            <Users className="w-3.5 h-3.5 text-slate-500" />
+          <div
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition-colors ${
+              currentUser?.role === 'BGH'
+                ? 'bg-amber-50/90 border-amber-300 text-amber-950 shadow-xs'
+                : 'bg-slate-100 border-slate-200 text-slate-800'
+            }`}
+          >
+            <Users className={`w-3.5 h-3.5 ${currentUser?.role === 'BGH' ? 'text-amber-700' : 'text-slate-500'}`} />
+            {currentUser?.role === 'BGH' && (
+              <span className="font-bold text-[10px] text-amber-800 uppercase tracking-tight hidden lg:inline">
+                Sổ lớp:
+              </span>
+            )}
             <select
               value={currentClass?.id || ''}
               onChange={(e) => selectClass(e.target.value)}
-              className="bg-transparent font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+              className="bg-transparent font-bold focus:outline-hidden cursor-pointer max-w-[200px] truncate"
             >
-              {activeYearClasses.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  Lớp {cls.className} ({cls.studentCount} HS)
-                </option>
-              ))}
+              <optgroup label="Cấp Tiểu học (Khối 1 - 5)">
+                {activeYearClasses
+                  .filter((cls) => ['1', '2', '3', '4', '5'].includes(cls.grade))
+                  .map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      Lớp {cls.className} {cls.homeroomTeacherName ? `(${cls.homeroomTeacherName})` : ''}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Cấp Trung học cơ sở (Khối 6 - 9)">
+                {activeYearClasses
+                  .filter((cls) => ['6', '7', '8', '9'].includes(cls.grade))
+                  .map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      Lớp {cls.className} {cls.homeroomTeacherName ? `(${cls.homeroomTeacherName})` : ''}
+                    </option>
+                  ))}
+              </optgroup>
             </select>
             {currentUser?.role === 'GVCN' && currentClass && currentClass.homeroomTeacherId === currentUser.id && (
               <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-[10px]">
@@ -123,8 +145,8 @@ export const Stage1Header: React.FC = () => {
               </span>
             )}
             {currentUser?.role === 'BGH' && (
-              <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px]">
-                Giám sát
+              <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px]">
+                Hiệu trưởng ({activeYearClasses.length} lớp)
               </span>
             )}
             {currentUser?.role === 'ADMIN' && (
@@ -188,36 +210,6 @@ export const Stage1Header: React.FC = () => {
                   <div className="text-slate-500 text-[11px] truncate">{currentUser?.email}</div>
                   <div className="text-slate-600 font-semibold text-[10px] mt-0.5">
                     {currentUser?.title}
-                  </div>
-                </div>
-
-                {/* Quick Role Switcher for Testing */}
-                <div className="p-2 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1">
-                  <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                    Đổi vai trò để thử nghiệm:
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {(['ADMIN', 'BGH', 'GVCN'] as UserRole[]).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => {
-                          switchUserRole(r);
-                          setShowUserDropdown(false);
-                          setActiveMenu('dashboard');
-                        }}
-                        className={`px-2 py-1.5 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
-                          currentUser?.role === r
-                            ? r === 'ADMIN'
-                              ? 'bg-purple-600 text-white shadow-xs'
-                              : r === 'BGH'
-                              ? 'bg-amber-600 text-white shadow-xs'
-                              : 'bg-sky-600 text-white shadow-xs'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
                   </div>
                 </div>
 

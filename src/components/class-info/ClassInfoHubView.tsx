@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { School, Calendar, Users, Eye, Settings, Plus, ArrowRight } from 'lucide-react';
+import { School, Calendar, Users, Eye, Settings, Plus, ArrowRight, BookOpen, UserCheck, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { YearAndClassView } from '../organization/YearAndClassView';
 import { ClassDetailView } from './ClassDetailView';
 
 export const ClassInfoHubView: React.FC = () => {
-  const { currentUser, currentClass, classes, currentSchoolYear, selectClass } = useApp();
+  const { currentUser, currentClass, classes, currentSchoolYear, selectClass, setActiveMenu, teachers } = useApp();
 
   const [adminTab, setAdminTab] = useState<'years-classes' | 'class-details'>('years-classes');
-  const [bghTab, setBghTab] = useState<'class-directory' | 'class-details'>('class-directory');
+  const [bghTab, setBghTab] = useState<'class-directory' | 'class-details' | 'homeroom-assignment'>('class-directory');
 
   // If user is ADMIN: give them full administrative tabs
   if (currentUser?.role === 'ADMIN') {
@@ -55,6 +55,7 @@ export const ClassInfoHubView: React.FC = () => {
   // If user is BGH: give them school-wide class directory & inspection view
   if (currentUser?.role === 'BGH') {
     const activeYearClasses = classes.filter((c) => c.schoolYearId === currentSchoolYear.id);
+    const assignedHomeroomCount = activeYearClasses.filter((c) => c.homeroomTeacherName && c.homeroomTeacherName.trim()).length;
 
     return (
       <div className="space-y-6">
@@ -74,6 +75,18 @@ export const ClassInfoHubView: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setBghTab('homeroom-assignment')}
+              className={`py-2.5 px-4 rounded-2xl flex items-center gap-2 transition-all cursor-pointer ${
+                bghTab === 'homeroom-assignment'
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 font-black'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>2. Phân công & Đồng bộ GVCN ({assignedHomeroomCount}/{activeYearClasses.length} lớp)</span>
+            </button>
+
+            <button
               onClick={() => setBghTab('class-details')}
               className={`py-2.5 px-4 rounded-2xl flex items-center gap-2 transition-all cursor-pointer ${
                 bghTab === 'class-details'
@@ -82,7 +95,7 @@ export const ClassInfoHubView: React.FC = () => {
               }`}
             >
               <Eye className="w-4 h-4" />
-              <span>2. Xem hồ sơ lớp & GVBM (Lớp {currentClass?.className || '7/1'})</span>
+              <span>3. Xem hồ sơ lớp & GVBM (Lớp {currentClass?.className || '7/1'})</span>
             </button>
           </div>
 
@@ -91,19 +104,29 @@ export const ClassInfoHubView: React.FC = () => {
           </span>
         </div>
 
-        {bghTab === 'class-directory' ? (
+        {bghTab === 'homeroom-assignment' ? (
+          <YearAndClassView />
+        ) : bghTab === 'class-directory' ? (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                     <School className="w-4 h-4 text-amber-600" />
                     Danh sách các lớp học trong trường ({currentSchoolYear.name})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Chọn lớp để giám sát thông tin chi tiết và giáo viên bộ môn
+                    Chọn lớp để giám sát thông tin chi tiết, sổ chủ nhiệm và giáo viên bộ môn
                   </p>
                 </div>
+
+                <button
+                  onClick={() => setBghTab('homeroom-assignment')}
+                  className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <UserCheck className="w-4 h-4 text-amber-600" />
+                  Bảng phân công GVCN ({assignedHomeroomCount}/{activeYearClasses.length})
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -144,15 +167,24 @@ export const ClassInfoHubView: React.FC = () => {
                         <div>Ca học: <strong className="text-slate-700">{cls.studyShift || 'Buổi sáng'}</strong></div>
                       </div>
 
-                      <div className="mt-4 flex items-center justify-end gap-2">
+                      <div className="mt-4 flex items-center justify-end gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            selectClass(cls.id);
+                            setActiveMenu('print-book');
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" /> Xem Sổ Chủ Nhiệm
+                        </button>
                         <button
                           onClick={() => {
                             selectClass(cls.id);
                             setBghTab('class-details');
                           }}
-                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                         >
-                          <Eye className="w-3.5 h-3.5" /> Xem hồ sơ lớp này
+                          <Eye className="w-3.5 h-3.5" /> Hồ sơ & GVBM
                         </button>
                       </div>
                     </div>

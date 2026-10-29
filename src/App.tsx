@@ -6,6 +6,7 @@ import { Stage1Sidebar } from './components/layout/Stage1Sidebar';
 import { Stage1Dashboard } from './components/dashboard/Stage1Dashboard';
 import { ClassInfoHubView } from './components/class-info/ClassInfoHubView';
 import { TeacherManagementMasterView } from './components/teachers/TeacherManagementMasterView';
+import { TeacherAccountManagementTab } from './components/teachers/TeacherAccountManagementTab';
 import { DepartmentManagementMasterView } from './components/departments/DepartmentManagementMasterView';
 import { StudentListView } from './components/students/StudentListView';
 import { ClassroomOrganizationView } from './components/organization/ClassroomOrganizationView';
@@ -25,13 +26,22 @@ import { InDevelopmentView } from './components/common/InDevelopmentView';
 import { RoleBanner } from './components/common/RoleBanner';
 
 const MainContent: React.FC = () => {
-  const { activeMenu } = useApp();
+  const { activeMenu, currentUser } = useApp();
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full custom-scrollbar">
       {/* Implemented across Stage 1 - Stage 10 */}
       {activeMenu === 'dashboard' && <Stage1Dashboard />}
       {activeMenu === 'class-info' && <ClassInfoHubView />}
+      {activeMenu === 'accounts' && (
+        currentUser?.role === 'ADMIN' ? (
+          <div className="space-y-6">
+            <TeacherAccountManagementTab />
+          </div>
+        ) : (
+          <Stage1Dashboard />
+        )
+      )}
       {activeMenu === 'teachers' && <TeacherManagementMasterView />}
       {activeMenu === 'departments' && <DepartmentManagementMasterView />}
       {activeMenu === 'students' && <StudentListView />}

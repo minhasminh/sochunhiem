@@ -57,25 +57,26 @@ Truy cập ứng dụng tại: `http://localhost:3000`
 
 ---
 
-## 🔑 Tài khoản Đăng nhập Hệ thống (Mật khẩu mặc định: `123`)
+## 🔑 Tài khoản Đăng nhập Hệ thống (Vận hành Chính thức)
 
-Hệ thống đã nạp sẵn đầy đủ tài khoản cho toàn bộ **32 Lớp** và **35 Cán bộ, Giáo viên** theo chuẩn trường TH&THCS Nguyễn Đình Anh:
+Hệ thống đã thiết lập đầy đủ danh mục tài khoản chính thức cho Ban Giám Hiệu, Quản trị viên và toàn bộ Giáo viên (32 Lớp học):
 
-| Vai trò | Tên tài khoản / Email đăng nhập | Mật khẩu | Phạm vi / Lớp phụ trách |
+| Vai trò | Tên tài khoản / Email đăng nhập | Mật khẩu chính thức | Phạm vi / Nhiệm vụ |
 | :--- | :--- | :--- | :--- |
-| **👑 Quản trị viên (ADMIN)** | `admin` hoặc `ducminh1973@gmail.com` | `123` | Quản trị toàn hệ thống & kiêm GVCN 7/1 |
-| **🎓 Ban Giám Hiệu (BGH)** | `bgh` hoặc `bgh@nguyendinhanh.edu.vn` | `123` | Giám sát, Ký duyệt Sổ Chủ Nhiệm 32 lớp |
-| **👨‍🏫 GVCN 7/1 (Thầy Lê Đức Minh)** | `gvcn` hoặc `ducminh1973@gmail.com` | `123` | Sổ Chủ Nhiệm Lớp 7/1 (Khối THCS) |
-| **👩‍🏫 GVCN 1/1 (Thầy Nguyễn Văn Sùng)** | `1/1` hoặc `nvsung_loi2.thqdien@hue.edu.vn` | `123` | Sổ Chủ Nhiệm Lớp 1/1 (Khối Tiểu học) |
-| **👩‍🏫 GVCN 1/2 (Cô Nguyễn Thị Lan Anh)** | `1/2` hoặc `ntlanh_loi2.thqdien@hue.edu.vn` | `123` | Sổ Chủ Nhiệm Lớp 1/2 (Khối Tiểu học) |
-| **👨‍🏫 GVCN 6/1 (Thầy Trần Trọng)** | `6/1` hoặc `ttrong_loi2.thqdien@hue.edu.vn` | `123` | Sổ Chủ Nhiệm Lớp 6/1 (Khối THCS) |
-| **👩‍🏫 GVCN 9/3 (Cô Nguyễn Thị Kim Ngân)** | `9/3` hoặc `nthkngan_loi2.thqdien@hue.edu.vn` | `123` | Sổ Chủ Nhiệm Lớp 9/3 (Khối THCS) |
+| **👑 Quản trị viên (ADMIN)** | `admin` hoặc `ducminh1973@gmail.com` | `T@mduc88$#` | Quản trị toàn hệ thống & phân công chuyên môn |
+| **🎓 Ban Giám Hiệu (BGH)** | `bgh` hoặc `bgh@nguyendinhanh.edu.vn` | `Giaovien@2026` | Giám sát, Ký duyệt Sổ Chủ Nhiệm 32 lớp |
+| **👨‍🏫 GVCN 7/1 (Thầy Lê Đức Minh)** | `gvcn` hoặc `ducminh1973@gmail.com` | `T@mduc88$#` | Sổ Chủ Nhiệm Lớp 7/1 (Khối THCS) |
+| **👩‍🏫 GVCN 1/1 (Thầy Nguyễn Văn Sùng)** | `1/1` hoặc `nvsung_loi2.thqdien@hue.edu.vn` | `Giaovien@2026` | Sổ Chủ Nhiệm Lớp 1/1 (Khối Tiểu học) |
+| **👩‍🏫 GVCN 1/2 (Cô Nguyễn Thị Lan Anh)** | `1/2` hoặc `ntlanh_loi2.thqdien@hue.edu.vn` | `Giaovien@2026` | Sổ Chủ Nhiệm Lớp 1/2 (Khối Tiểu học) |
+| **👨‍🏫 GVCN 6/1 (Thầy Trần Trọng)** | `6/1` hoặc `ttrong_loi2.thqdien@hue.edu.vn` | `Giaovien@2026` | Sổ Chủ Nhiệm Lớp 6/1 (Khối THCS) |
+| **👩‍🏫 GVCN 9/3 (Cô Nguyễn Thị Kim Ngân)** | `9/3` hoặc `nthkngan_loi2.thqdien@hue.edu.vn` | `Giaovien@2026` | Sổ Chủ Nhiệm Lớp 9/3 (Khối THCS) |
+| **👩‍🏫 Tất cả GVCN các lớp còn lại** | Email cá nhân hoặc Tên lớp (vd: `2/1`, `3/2`, `8/1`...) | `Giaovien@2026` | Sổ Chủ Nhiệm lớp phụ trách |
 
-### 💡 Các tính năng đăng nhập thông minh:
-1. **Đăng nhập bằng Tên Lớp**: Bạn chỉ cần gõ tên lớp (ví dụ: `1/1`, `1/2`, `4/3`, `6/1`, `7/1`, `9/3`...) vào ô Tài khoản, mật khẩu `123` là hệ thống sẽ tự động đăng nhập đúng vào tài khoản GVCN của lớp đó.
-2. **Từ khóa viết tắt**: Hỗ trợ `admin`, `bgh`, `gvcn`.
-3. **Mật khẩu linh hoạt**: Hỗ trợ mật khẩu mặc định `123`, `123456`, `admin` hoặc mật khẩu bảo mật riêng của tài khoản.
-4. **Nút bấm 1-chạm**: Ngay trên màn hình đăng nhập có sẵn 4 thẻ đăng nhập 1-chạm và danh mục 32 lớp để bạn bấm vào là đăng nhập ngay mà không cần nhớ email.
+### 💡 Quy tắc đăng nhập chính thức:
+1. **Tài khoản Quản trị (ADMIN)**: Sử dụng mật khẩu bảo mật cao: `T@mduc88$#`.
+2. **Tài khoản Giáo viên & BGH**: Sử dụng mật khẩu khởi tạo chuẩn: `Giaovien@2026`.
+3. **Đăng nhập bằng Tên Lớp**: GVCN có thể nhập trực tiếp tên lớp (ví dụ: `1/1`, `1/2`, `4/3`, `6/1`, `7/1`, `9/3`...) kèm mật khẩu `Giaovien@2026` để vào nhanh sổ lớp.
+4. **Từ khóa viết tắt**: Hỗ trợ `admin`, `bgh`, `gvcn`.
 
 ---
 

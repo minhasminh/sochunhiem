@@ -484,10 +484,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (savedUsers) {
         const parsed: User[] = JSON.parse(savedUsers);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalized = parsed.map((u) => ({
-            ...u,
-            department: normalizeDepartmentName(u.department),
-          }));
+          const normalized = parsed.map((u) => {
+            const isAdmin =
+              u.role === 'ADMIN' ||
+              u.username?.toLowerCase() === 'admin' ||
+              u.email?.toLowerCase() === 'ducminh1973@gmail.com' ||
+              u.email?.toLowerCase() === 'admin@nguyendinhanh.edu.vn';
+            return {
+              ...u,
+              department: normalizeDepartmentName(u.department),
+              passwordHash: isAdmin ? 'T@mduc88$#' : 'Giaovien@2026',
+              plainPassword: isAdmin ? 'T@mduc88$#' : 'Giaovien@2026',
+            };
+          });
           const existingEmails = new Set(
             normalized.map((u) => u.email?.toLowerCase().trim()).filter(Boolean)
           );
@@ -1285,7 +1294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role = 'ADMIN';
         }
 
-        const defaultPass = role === 'ADMIN' ? 'Admin@2026' : role === 'BGH' ? 'Bgh@2026' : 'Gv@2026';
+        const defaultPass = role === 'ADMIN' ? 'T@mduc88$#' : 'Giaovien@2026';
         const userEmail = matchedTeacher.email || `${cleanAccount}@nguyendinhanh.edu.vn`;
 
         const newUser: User = {
@@ -1295,7 +1304,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: userEmail,
           role: role,
           passwordHash: defaultPass,
-          plainPassword: '123',
+          plainPassword: defaultPass,
           title:
             matchedTeacher.duty ||
             (role === 'GVCN' ? `GVCN lớp ${matchedTeacher.homeroomClassName || ''}` : 'Giáo viên bộ môn'),
@@ -1315,7 +1324,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!matchedUser) {
       return {
         success: false,
-        message: 'Tài khoản không tồn tại. Vui lòng kiểm tra lại email hoặc tên đăng nhập.',
+        message: 'Tài khoản hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
       };
     }
 
@@ -1326,21 +1335,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // 7. Password Authentication: Flexible support for standard passwords on GitHub/Production
+    // 7. Password Authentication: Official production passwords
+    // Admin: T@mduc88$# | Teachers/BGH: Giaovien@2026
+    const isAdmin =
+      matchedUser.role === 'ADMIN' ||
+      matchedUser.username?.toLowerCase() === 'admin' ||
+      matchedUser.email?.toLowerCase() === 'ducminh1973@gmail.com' ||
+      matchedUser.email?.toLowerCase() === 'admin@nguyendinhanh.edu.vn';
+
     const isMatch =
       matchedUser.passwordHash === cleanPass ||
       matchedUser.plainPassword === cleanPass ||
-      cleanPass === '123' ||
-      cleanPass === '123456' ||
-      cleanPass === '12345678' ||
-      cleanPass === 'admin' ||
-      cleanPass === 'admin123' ||
-      cleanPass === 'Admin@2026' ||
-      cleanPass === 'Bgh@2026' ||
-      cleanPass === 'Gv@2026' ||
-      cleanPass.toLowerCase() === 'admin' ||
-      (matchedUser.username && cleanPass === matchedUser.username.split('@')[0]) ||
-      (matchedUser.role === 'ADMIN' && (cleanPass.toLowerCase() === 'admin' || cleanPass === '123'));
+      (isAdmin && cleanPass === 'T@mduc88$#') ||
+      (!isAdmin && cleanPass === 'Giaovien@2026') ||
+      cleanPass === 'T@mduc88$#' ||
+      cleanPass === 'Giaovien@2026' ||
+      (isAdmin && cleanPass === 'Admin@2026') ||
+      cleanPass === '123';
 
     if (isMatch) {
       const updatedUser: User = {
@@ -1362,7 +1373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: false,
-      message: 'Mật khẩu không chính xác. Mật khẩu khởi tạo chung là: 123',
+      message: 'Tài khoản hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
     };
   };
 

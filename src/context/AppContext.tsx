@@ -476,6 +476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const serverVersionRef = React.useRef<number>(1);
   const isSyncingFromServerRef = React.useRef<boolean>(false);
   const isInitialLoadDoneRef = React.useRef<boolean>(false);
+  const lastServerDataHashRef = React.useRef<string>('');
   const debouncedSyncTimerRef = React.useRef<any>(null);
 
   // Auth state (Production: Gated login screen, không tự động đăng nhập)
@@ -1012,6 +1013,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (serverData.auditLogs) setAuditLogs(serverData.auditLogs);
       if (serverData.settings) setSettings(serverData.settings);
 
+      if (serverData) {
+        try {
+          lastServerDataHashRef.current = JSON.stringify(serverData);
+        } catch (e) {}
+      }
+
       setSyncStatus('synced');
       setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
     } finally {
@@ -1025,7 +1032,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const forceSyncWithServer = async () => {
     try {
       setSyncStatus('syncing');
-      // 1. Prioritize reading live Cloud Firestore snapshot
+      // 1. Fetch latest server database
+      const res = await fetch('/api/database');
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success && result.data) {
+          applyServerData(result.data, result.version);
+          setSyncStatus('synced');
+          setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+          return;
+        }
+      }
+      // 2. Direct Firestore fallback
       try {
         const snap = await getDoc(doc(db, 'school_database', 'main'));
         if (snap.exists()) {
@@ -1034,21 +1052,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             applyServerData(cloudDb.data, cloudDb.version);
             setSyncStatus('synced');
             setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
-            return;
           }
         }
       } catch (e) {
-        console.warn('Firestore direct fetch warning, trying server API:', e);
-      }
-
-      // 2. Fall back to /api/database
-      const res = await fetch('/api/database');
-      if (!res.ok) throw new Error('Không thể tải CSDL máy chủ');
-      const result = await res.json();
-      if (result.success && result.data) {
-        applyServerData(result.data, result.version);
-        setSyncStatus('synced');
-        setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+        console.warn('Firestore direct fetch fallback:', e);
       }
     } catch (e) {
       setSyncStatus('offline');
@@ -1079,7 +1086,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         console.warn('Firestore real-time sync notice, using server API fallback:', error?.message);
-        handleFirestoreError(error, OperationType.GET, 'school_database/main');
       }
     );
 
@@ -1090,11 +1096,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const res = await fetch('/api/database');
         if (!res.ok) throw new Error('Failed to load server database');
         const result = await res.json();
-        if (result.success && result.data && active && !isInitialLoadDoneRef.current) {
+        if (result.success && result.data && active) {
           applyServerData(result.data, result.version);
         }
       } catch (e) {
-        if (active && !isInitialLoadDoneRef.current) {
+        if (active) {
           setSyncStatus('offline');
           isInitialLoadDoneRef.current = true;
         }
@@ -1154,7 +1160,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     debouncedSyncTimerRef.current = setTimeout(async () => {
       try {
-        setSyncStatus('syncing');
         const payload = {
           school,
           schoolYears,
@@ -1193,6 +1198,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           settings,
         };
 
+        const currentHash = JSON.stringify(payload);
+        // CRITICAL GUARD: Only push to cloud/server if state has ACTUALLY been modified by user!
+        if (lastServerDataHashRef.current && currentHash === lastServerDataHashRef.current) {
+          return;
+        }
+
+        setSyncStatus('syncing');
+
         const nextVersion = serverVersionRef.current + 1;
         const cloudDoc = {
           version: nextVersion,
@@ -1225,6 +1238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         } catch (apiErr) {}
 
+        lastServerDataHashRef.current = currentHash;
         setSyncStatus('synced');
         setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
       } catch (e) {
@@ -1598,6 +1612,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             authUser.email || authUser.username,
             'SUCCESS'
           );
+          // CRITICAL: Immediately load the updated database from cloud/server so classes, students and personal data appear instantly!
+          await forceSyncWithServer();
           return { success: true };
         }
       } else if (srvRes.status === 401 || srvRes.status === 403) {

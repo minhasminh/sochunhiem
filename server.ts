@@ -700,7 +700,19 @@ async function syncFromCloudOnStartup() {
 }
 
 // 1. Kiểm tra phiên bản CSDL (Polled by clients to detect changes)
-app.get('/api/database/version', (_req: Request, res: Response) => {
+app.get('/api/database/version', async (_req: Request, res: Response) => {
+  try {
+    const snap = await getDoc(doc(firestoreDb, 'school_database', 'main'));
+    if (snap.exists()) {
+      const cloudDb = snap.data() as ServerDatabase;
+      if (cloudDb && cloudDb.data && (cloudDb.version || 0) > (serverDb.version || 0)) {
+        serverDb.version = cloudDb.version;
+        serverDb.updatedAt = cloudDb.updatedAt;
+        serverDb.data = cloudDb.data;
+      }
+    }
+  } catch (e) {}
+
   res.json({
     success: true,
     version: serverDb.version,
@@ -709,7 +721,19 @@ app.get('/api/database/version', (_req: Request, res: Response) => {
 });
 
 // 2. Lấy toàn bộ dữ liệu CSDL máy chủ
-app.get('/api/database', (_req: Request, res: Response) => {
+app.get('/api/database', async (_req: Request, res: Response) => {
+  try {
+    const snap = await getDoc(doc(firestoreDb, 'school_database', 'main'));
+    if (snap.exists()) {
+      const cloudDb = snap.data() as ServerDatabase;
+      if (cloudDb && cloudDb.data && (cloudDb.version || 0) > (serverDb.version || 0)) {
+        serverDb.version = cloudDb.version;
+        serverDb.updatedAt = cloudDb.updatedAt;
+        serverDb.data = cloudDb.data;
+      }
+    }
+  } catch (e) {}
+
   res.json({
     success: true,
     version: serverDb.version,
@@ -777,12 +801,25 @@ app.post('/api/database/sync', (req: Request, res: Response) => {
 });
 
 // 5. Xác thực Đăng nhập trực tiếp trên máy chủ
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   try {
     const { account, password } = req.body;
     if (!account || !password) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tài khoản và mật khẩu.' });
     }
+
+    // Live sync from Firestore before checking credentials so password changes across computers apply immediately
+    try {
+      const snap = await getDoc(doc(firestoreDb, 'school_database', 'main'));
+      if (snap.exists()) {
+        const cloudDb = snap.data() as ServerDatabase;
+        if (cloudDb && cloudDb.data && (cloudDb.version || 0) >= (serverDb.version || 0)) {
+          serverDb.version = cloudDb.version;
+          serverDb.updatedAt = cloudDb.updatedAt;
+          serverDb.data = cloudDb.data;
+        }
+      }
+    } catch (e) {}
 
     const cleanAcc = account.trim().toLowerCase();
     const cleanPass = password.trim();

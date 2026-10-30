@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny for unmatched collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // System collections for real-time synchronization across devices and computers
+    match /system/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /school_database/{documentId} {
+      allow read, write: if true;
+    }
+  }
+}

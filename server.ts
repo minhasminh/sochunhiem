@@ -6,6 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import fs from 'fs';
+import { initializeApp as initFirebaseApp } from 'firebase/app';
+import { getFirestore as getFirebaseFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
 import {
   initialAttendanceRecords,
   initialAuditLogs,
@@ -618,6 +621,17 @@ const dataDir = path.resolve(__dirname, 'data');
 const dbPath = path.resolve(dataDir, 'app-database.json');
 const tempPath = path.resolve(dataDir, 'app-database.json.tmp');
 
+const firebaseApp = initFirebaseApp(firebaseConfig);
+const firestoreDb = getFirebaseFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+
+async function persistToCloud(db: ServerDatabase) {
+  try {
+    await setDoc(doc(firestoreDb, 'school_database', 'main'), db);
+  } catch (err: any) {
+    console.warn('[Firestore] Cảnh báo lưu Firestore:', err?.message || err);
+  }
+}
+
 function saveDatabase(db: ServerDatabase): boolean {
   try {
     if (!fs.existsSync(dataDir)) {
@@ -625,6 +639,8 @@ function saveDatabase(db: ServerDatabase): boolean {
     }
     fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf-8');
     fs.renameSync(tempPath, dbPath);
+    // Asynchronously push to Cloud Firestore
+    persistToCloud(db).catch(() => {});
     return true;
   } catch (err) {
     console.error('[DB] Lỗi lưu CSDL máy chủ:', err);
@@ -655,6 +671,33 @@ function loadDatabase(): ServerDatabase {
 }
 
 const serverDb: ServerDatabase = loadDatabase();
+
+async function syncFromCloudOnStartup() {
+  try {
+    const snap = await getDoc(doc(firestoreDb, 'school_database', 'main'));
+    if (snap.exists()) {
+      const cloudDb = snap.data() as ServerDatabase;
+      if (cloudDb && cloudDb.data && Array.isArray(cloudDb.data.users) && cloudDb.data.users.length > 0) {
+        console.log(`[Firestore] Đã đồng bộ CSDL từ Cloud Firestore thành công (v${cloudDb.version || 1}, cập nhật: ${cloudDb.updatedAt})`);
+        serverDb.version = cloudDb.version || 1;
+        serverDb.updatedAt = cloudDb.updatedAt || new Date().toISOString();
+        serverDb.data = cloudDb.data;
+        try {
+          if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+          }
+          fs.writeFileSync(tempPath, JSON.stringify(serverDb, null, 2), 'utf-8');
+          fs.renameSync(tempPath, dbPath);
+        } catch (e) {}
+        return;
+      }
+    }
+    console.log('[Firestore] Khởi tạo CSDL lên Cloud Firestore lần đầu...');
+    await persistToCloud(serverDb);
+  } catch (err: any) {
+    console.warn('[Firestore] Cảnh báo đồng bộ Cloud Firestore khi khởi động:', err?.message || err);
+  }
+}
 
 // 1. Kiểm tra phiên bản CSDL (Polled by clients to detect changes)
 app.get('/api/database/version', (_req: Request, res: Response) => {
@@ -908,6 +951,8 @@ app.post('/api/auth/batch-reset-teacher-passwords', (req: Request, res: Response
 
 // Vite Middleware for Frontend Integration
 async function startServer() {
+  await syncFromCloudOnStartup();
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

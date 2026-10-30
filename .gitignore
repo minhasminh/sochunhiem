@@ -1,8 +1,14 @@
 node_modules/
-build/
 dist/
+build/
 coverage/
 .DS_Store
 *.log
-.env*
+.env
+.env.local
+.env.*.local
 !.env.example
+*.tmp
+server.js
+.aistudio/
+

@@ -92,6 +92,25 @@ npm start
 
 ---
 
+## 📤 Hướng dẫn Đưa dự án lên GitHub (Push to GitHub)
+
+Dự án đã được khởi tạo sẵn git và commit toàn bộ mã nguồn cùng cấu hình. Để đưa lên kho lưu trữ GitHub của bạn:
+
+```bash
+# 1. Thêm địa chỉ kho chứa GitHub của bạn:
+git remote add origin https://github.com/<ten-tai-khoan-github>/<ten-repository>.git
+
+# 2. Đổi tên nhánh chính thành main (nếu chưa):
+git branch -M main
+
+# 3. Đẩy toàn bộ mã nguồn lên GitHub:
+git push -u origin main
+```
+
+*(Lưu ý: Nếu kho GitHub mới tạo đã có sẵn file README hoặc LICENSE, dùng `git pull origin main --rebase` trước khi push).*
+
+---
+
 ## 📂 Cấu trúc thư mục dự án
 
 ```text

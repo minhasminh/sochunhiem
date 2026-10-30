@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { db, handleFirestoreError, OperationType, testConnection } from '../firebase';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import {
   initialAttendanceRecords,
   initialAuditLogs,
@@ -1023,39 +1025,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const forceSyncWithServer = async () => {
     try {
       setSyncStatus('syncing');
+      // 1. Prioritize reading live Cloud Firestore snapshot
+      try {
+        const snap = await getDoc(doc(db, 'school_database', 'main'));
+        if (snap.exists()) {
+          const cloudDb = snap.data();
+          if (cloudDb && cloudDb.data) {
+            applyServerData(cloudDb.data, cloudDb.version);
+            setSyncStatus('synced');
+            setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Firestore direct fetch warning, trying server API:', e);
+      }
+
+      // 2. Fall back to /api/database
       const res = await fetch('/api/database');
       if (!res.ok) throw new Error('Không thể tải CSDL máy chủ');
       const result = await res.json();
       if (result.success && result.data) {
         applyServerData(result.data, result.version);
+        setSyncStatus('synced');
+        setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
       }
     } catch (e) {
       setSyncStatus('offline');
     }
   };
 
-  // 1. Khởi động ứng dụng: Tải ngay dữ liệu CSDL máy chủ mới nhất (hỗ trợ đa máy tính)
+  // 1. Khởi động ứng dụng: Kết nối Cloud Firestore thời gian thực & Đồng bộ tức thì đa máy tính
   useEffect(() => {
     let active = true;
+
+    // Test connectivity
+    testConnection().catch(() => {});
+
+    // Attach real-time Firestore listener (changes on any computer instantly update here)
+    const unsubscribe = onSnapshot(
+      doc(db, 'school_database', 'main'),
+      (snap) => {
+        if (!active) return;
+        if (snap.exists()) {
+          const cloudDb = snap.data();
+          if (cloudDb && cloudDb.data) {
+            const cloudVersion = cloudDb.version || 1;
+            if (!isInitialLoadDoneRef.current || cloudVersion >= serverVersionRef.current) {
+              applyServerData(cloudDb.data, cloudVersion);
+            }
+          }
+        }
+      },
+      (error) => {
+        console.warn('Firestore real-time sync notice, using server API fallback:', error?.message);
+        handleFirestoreError(error, OperationType.GET, 'school_database/main');
+      }
+    );
+
+    // Initial fallback fetch from server in case Firestore takes a moment
     const fetchInitial = async () => {
       try {
         setSyncStatus('syncing');
         const res = await fetch('/api/database');
         if (!res.ok) throw new Error('Failed to load server database');
         const result = await res.json();
-        if (result.success && result.data && active) {
+        if (result.success && result.data && active && !isInitialLoadDoneRef.current) {
           applyServerData(result.data, result.version);
         }
       } catch (e) {
-        if (active) {
+        if (active && !isInitialLoadDoneRef.current) {
           setSyncStatus('offline');
           isInitialLoadDoneRef.current = true;
         }
       }
     };
     fetchInitial();
+
     return () => {
       active = false;
+      try {
+        unsubscribe();
+      } catch (e) {}
     };
   }, []);
 
@@ -1079,7 +1130,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {}
     };
 
-    const interval = setInterval(pollServerVersion, 8000);
+    const interval = setInterval(pollServerVersion, 6000);
     const handleFocus = () => {
       pollServerVersion();
     };
@@ -1092,7 +1143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // 3. Tự động đẩy thay đổi từ client lên máy chủ (Debounced Push)
+  // 3. Tự động đẩy thay đổi từ client lên Cloud Firestore & máy chủ (Real-time Cloud Sync)
   useEffect(() => {
     if (!isInitialLoadDoneRef.current) return;
     if (isSyncingFromServerRef.current) return;
@@ -1142,20 +1193,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           settings,
         };
 
-        const res = await fetch('/api/database', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: payload }),
-        });
+        const nextVersion = serverVersionRef.current + 1;
+        const cloudDoc = {
+          version: nextVersion,
+          updatedAt: new Date().toISOString(),
+          data: payload,
+        };
 
-        if (res.ok) {
-          const resData = await res.json();
-          if (resData.version) {
-            serverVersionRef.current = resData.version;
-          }
-          setSyncStatus('synced');
-          setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
+        let savedToCloud = false;
+        // 1. Direct write to Cloud Firestore
+        try {
+          await setDoc(doc(db, 'school_database', 'main'), cloudDoc);
+          savedToCloud = true;
+          serverVersionRef.current = nextVersion;
+        } catch (fErr) {
+          console.warn('[Firestore] Cảnh báo lưu trực tiếp, chuyển qua server API:', fErr);
         }
+
+        // 2. Dual persistence to server API
+        try {
+          const res = await fetch('/api/database', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: payload }),
+          });
+          if (res.ok) {
+            const resData = await res.json();
+            if (resData.version && !savedToCloud) {
+              serverVersionRef.current = resData.version;
+            }
+          }
+        } catch (apiErr) {}
+
+        setSyncStatus('synced');
+        setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
       } catch (e) {
         setSyncStatus('offline');
       }
@@ -1495,6 +1566,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message?: string }> => {
     const cleanAccount = account.trim().toLowerCase();
     const cleanPass = pass.trim();
+
+    // 0. Primary Authentication against Server & Cloud Firestore (immediate sync on any computer)
+    try {
+      const srvRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: cleanAccount, password: cleanPass }),
+      });
+      if (srvRes.ok) {
+        const srvData = await srvRes.json();
+        if (srvData.success && srvData.user) {
+          const authUser: User = {
+            ...srvData.user,
+            lastLogin: new Date().toISOString(),
+          };
+          setCurrentUser(authUser);
+          setIsAuthenticated(true);
+          setUsers((prev) => [authUser, ...prev.filter((u) => u.id !== authUser.id)]);
+          try {
+            if (remember) {
+              localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(authUser));
+            } else {
+              sessionStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(authUser));
+            }
+          } catch (e) {}
+          addAuditLog(
+            'Đăng nhập hệ thống',
+            `Người dùng ${authUser.name} (${authUser.role} - Email: ${authUser.email}) đã đăng nhập thành công.`,
+            'Xác thực',
+            authUser.email || authUser.username,
+            'SUCCESS'
+          );
+          return { success: true };
+        }
+      } else if (srvRes.status === 401 || srvRes.status === 403) {
+        const errData = await srvRes.json().catch(() => ({}));
+        if (errData.message && (errData.message.includes('Mật khẩu không chính xác') || errData.message.includes('tạm khóa'))) {
+          return { success: false, message: errData.message };
+        }
+      }
+    } catch (netErr) {
+      console.warn('Server auth unreachable, using local fallback:', netErr);
+    }
 
     // Check if this is an admin identifier
     const isAdminIdentifier =

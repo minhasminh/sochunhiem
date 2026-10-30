@@ -103,7 +103,7 @@ export const Stage1Header: React.FC = () => {
                       ? 'Đang đồng bộ...'
                       : syncStatus === 'offline'
                       ? 'Ngoại tuyến'
-                      : 'Đồng bộ máy chủ'}
+                      : 'Đồng bộ Đám mây'}
                   </span>
                 </button>
                 {isCurrentSchoolYearLocked && (

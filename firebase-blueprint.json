@@ -1,0 +1,34 @@
+{
+  "entities": {
+    "SystemDatabase": {
+      "title": "SystemDatabase",
+      "description": "Cơ sở dữ liệu trung tâm đồng bộ thời gian thực cho Sổ Chủ Nhiệm Điện Tử",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "description": "Phiên bản dữ liệu"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Thời gian cập nhật ISO string"
+        },
+        "data": {
+          "type": "object",
+          "description": "Toàn bộ dữ liệu trường học, lớp học, học sinh, giáo viên"
+        }
+      },
+      "required": ["version", "updatedAt", "data"]
+    }
+  },
+  "firestore": {
+    "/system/{documentId}": {
+      "schema": "SystemDatabase",
+      "description": "Dữ liệu cấu hình và đồng bộ hệ thống"
+    },
+    "/school_database/{documentId}": {
+      "schema": "SystemDatabase",
+      "description": "Bản ghi CSDL trường học đồng bộ đa thiết bị"
+    }
+  }
+}

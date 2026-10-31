@@ -180,11 +180,18 @@ export const Stage1Header: React.FC = () => {
                   ))}
               </optgroup>
             </select>
-            {currentUser?.role === 'GVCN' && currentClass && currentClass.homeroomTeacherId === currentUser.id && (
-              <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-[10px]">
-                Lớp bạn CN
-              </span>
-            )}
+            {currentUser?.role === 'GVCN' &&
+              currentClass &&
+              ((currentUser.homeroomClassId && currentClass.id === currentUser.homeroomClassId) ||
+                currentClass.homeroomTeacherId === currentUser.id ||
+                (currentUser.teacherId && currentClass.homeroomTeacherId === currentUser.teacherId) ||
+                (currentClass.homeroomTeacherName &&
+                  currentUser.name &&
+                  currentClass.homeroomTeacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())) && (
+                <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-[10px]">
+                  Lớp bạn CN
+                </span>
+              )}
             {currentUser?.role === 'BGH' && (
               <span className="hidden xl:inline-block px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px]">
                 Hiệu trưởng ({activeYearClasses.length} lớp)

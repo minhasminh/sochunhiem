@@ -55,7 +55,15 @@ export const RoleBanner: React.FC = () => {
     );
   }
 
-  const isMyClass = currentClass && currentClass.homeroomTeacherId === currentUser.id;
+  const isMyClass = Boolean(
+    currentClass && (
+      currentClass.homeroomTeacherId === currentUser.id ||
+      (currentUser.teacherId && currentClass.homeroomTeacherId === currentUser.teacherId) ||
+      (currentUser.homeroomClassId && currentClass.id === currentUser.homeroomClassId) ||
+      (currentClass.homeroomTeacherName &&
+        currentClass.homeroomTeacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    )
+  );
 
   return (
     <div className={`px-4 py-1.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b ${

@@ -171,35 +171,20 @@ export const LoginView: React.FC = () => {
             </button>
           </div>
 
-          {/* Support guidance accordion */}
+          {/* Support guidance modal/box */}
           {showSupportInfo && (
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-2 animate-fade-in">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
                 <School className="w-4 h-4 text-sky-600" />
-                <span>Thông tin tài khoản đăng nhập chính thức:</span>
+                <span>Hỗ trợ kỹ thuật & Cấp tài khoản:</span>
               </div>
-              <div className="space-y-1 text-[11px] text-slate-600">
-                <div className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-200">
-                  <span>👑 <strong>Quản trị viên (ADMIN):</strong> <code className="text-sky-700">admin</code> hoặc <code className="text-sky-700">ducminh1973@gmail.com</code> (MK: <code className="text-emerald-700">T@mduc88$#</code>)</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccount('admin');
-                      setPassword('T@mduc88$#');
-                      setErrorMessage(null);
-                    }}
-                    className="text-xs text-sky-600 hover:text-sky-800 font-semibold px-2 py-0.5 rounded hover:bg-sky-50 cursor-pointer"
-                  >
-                    Điền
-                  </button>
-                </div>
-                <div className="p-1.5 bg-white rounded-lg border border-slate-200">
-                  <span>👨‍🏫 <strong>Giáo viên & BGH:</strong> Email cá nhân hoặc Mã lớp (vd: <code className="text-sky-700">1/1</code>, <code className="text-sky-700">7/1</code>) • MK: <code className="text-emerald-700">Giaovien@2026</code></span>
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-500 italic pt-1">
-                Quý Thầy/Cô quên mật khẩu hoặc cần cấp lại tài khoản vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị mạng nhà trường.
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Hệ thống dành riêng cho Cán bộ quản lý, Giáo viên chủ nhiệm và Giáo viên bộ môn Trường TH&THCS Nguyễn Đình Anh.
               </p>
+              <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <div>• Quý Thầy/Cô sử dụng Email đã được kích hoạt trên hệ thống để đăng nhập.</div>
+                <div>• Trường hợp quên mật khẩu hoặc cần mở khóa tài khoản, vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị mạng nhà trường để được hỗ trợ xác minh và đặt lại mật khẩu an toàn.</div>
+              </div>
             </div>
           )}
 
@@ -214,33 +199,6 @@ export const LoginView: React.FC = () => {
             ) : null}
             <span>Đăng nhập hệ thống</span>
           </button>
-
-          {/* Discreet 1-click Admin login shortcut for testing/recovery */}
-          <div className="pt-1 text-center">
-            <button
-              type="button"
-              onClick={async () => {
-                setAccount('admin');
-                setPassword('T@mduc88$#');
-                setErrorMessage(null);
-                setIsLoading(true);
-                try {
-                  const res = await login('admin', 'T@mduc88$#', true);
-                  setIsLoading(false);
-                  if (!res.success) {
-                    setErrorMessage(res.message || 'Không thể đăng nhập tài khoản quản trị.');
-                  }
-                } catch (err: any) {
-                  setIsLoading(false);
-                  setErrorMessage(err?.message || 'Lỗi kết nối máy chủ.');
-                }
-              }}
-              className="text-[11px] text-slate-500 hover:text-indigo-600 inline-flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Đăng nhập nhanh với quyền Quản trị viên (admin)</span>
-            </button>
-          </div>
         </form>
 
         {/* Footer info & Server Sync Indicator */}

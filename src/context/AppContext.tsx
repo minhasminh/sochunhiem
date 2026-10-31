@@ -108,7 +108,7 @@ interface AppContextType {
   // Cloud & Multi-Device Sync State
   syncStatus: 'synced' | 'syncing' | 'offline' | 'error';
   lastSyncedTime: string;
-  forceSyncWithServer: () => Promise<void>;
+  forceSyncWithServer: (activeUserOverride?: User) => Promise<void>;
 
   // Auth state & User Account Management (Admin cấp tài khoản & mật khẩu)
   isAuthenticated: boolean;
@@ -503,6 +503,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => currentUser !== null);
 
+  // Ref to always maintain latest active user in memory and avoid stale closures during async sync
+  const currentUserRef = React.useRef<User | null>(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   // User Accounts State (Quản trị tài khoản & phân quyền đăng nhập bằng email)
   const [users, setUsers] = useState<User[]>(() => {
     try {
@@ -707,17 +713,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     schoolYears.find((y) => y.isCurrent) || schoolYears[0] || initialSchoolYears[0];
 
   const currentClass = useMemo(() => {
+    // 1. Nếu là GVCN và lớp chủ nhiệm đã được phân công, tự động ưu tiên lớp chủ nhiệm của giáo viên đó
+    if (currentUser?.role === 'GVCN') {
+      const gvClass = classes.find(
+        (c) =>
+          c.schoolYearId === currentSchoolYear.id &&
+          ((currentUser.homeroomClassId && c.id === currentUser.homeroomClassId) ||
+            c.homeroomTeacherId === currentUser.id ||
+            (currentUser.teacherId && c.homeroomTeacherId === currentUser.teacherId) ||
+            (c.homeroomTeacherName &&
+              currentUser.name &&
+              c.homeroomTeacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()))
+      );
+      if (gvClass && (!selectedClassId || selectedClassId === gvClass.id)) {
+        return gvClass;
+      }
+    }
+
     if (selectedClassId) {
       const found = classes.find((c) => c.id === selectedClassId);
       if (found) return found;
     }
-    // Ưu tiên lớp được phân công của GVCN nếu có
+
+    // 2. Dự phòng lớp chủ nhiệm của GVCN
     if (currentUser?.role === 'GVCN') {
       const gvClass = classes.find(
-        (c) => c.homeroomTeacherId === currentUser.id && c.schoolYearId === currentSchoolYear.id
+        (c) =>
+          c.schoolYearId === currentSchoolYear.id &&
+          ((currentUser.homeroomClassId && c.id === currentUser.homeroomClassId) ||
+            c.homeroomTeacherId === currentUser.id ||
+            (currentUser.teacherId && c.homeroomTeacherId === currentUser.teacherId) ||
+            (c.homeroomTeacherName &&
+              currentUser.name &&
+              c.homeroomTeacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()))
       );
       if (gvClass) return gvClass;
     }
+
     return classes.find((c) => c.schoolYearId === currentSchoolYear.id) || classes[0] || null;
   }, [classes, selectedClassId, currentSchoolYear.id, currentUser]);
 
@@ -958,7 +990,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   // ================= CLOUD & MULTI-DEVICE SYNCHRONIZATION LOGIC =================
-  const applyServerData = (serverData: any, version?: number) => {
+  const applyServerData = (serverData: any, version?: number, activeUserOverride?: User) => {
     isSyncingFromServerRef.current = true;
     try {
       if (version) serverVersionRef.current = version;
@@ -971,16 +1003,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (serverData.departments) setDepartments(serverData.departments);
       if (serverData.users && Array.isArray(serverData.users) && serverData.users.length > 0) {
         setUsers(serverData.users);
-        if (currentUser) {
+        const targetUser = activeUserOverride || currentUserRef.current;
+        if (targetUser) {
           const updatedCurrent = serverData.users.find(
             (u: User) =>
-              u.id === currentUser.id ||
-              (u.email && currentUser.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+              u.id === targetUser.id ||
+              (u.email && targetUser.email && u.email.toLowerCase() === targetUser.email.toLowerCase())
           );
           if (updatedCurrent) {
+            currentUserRef.current = updatedCurrent;
             setCurrentUser(updatedCurrent);
             try {
               localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedCurrent));
+              sessionStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedCurrent));
             } catch (e) {}
           }
         }
@@ -1029,7 +1064,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const forceSyncWithServer = async () => {
+  const forceSyncWithServer = async (activeUserOverride?: User) => {
     try {
       setSyncStatus('syncing');
       // 1. Fetch latest server database
@@ -1037,7 +1072,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const result = await res.json();
         if (result.success && result.data) {
-          applyServerData(result.data, result.version);
+          applyServerData(result.data, result.version, activeUserOverride);
           setSyncStatus('synced');
           setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
           return;
@@ -1049,7 +1084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (snap.exists()) {
           const cloudDb = snap.data();
           if (cloudDb && cloudDb.data) {
-            applyServerData(cloudDb.data, cloudDb.version);
+            applyServerData(cloudDb.data, cloudDb.version, activeUserOverride);
             setSyncStatus('synced');
             setLastSyncedTime(new Date().toLocaleTimeString('vi-VN'));
           }
@@ -1595,6 +1630,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...srvData.user,
             lastLogin: new Date().toISOString(),
           };
+          currentUserRef.current = authUser;
           setCurrentUser(authUser);
           setIsAuthenticated(true);
           setUsers((prev) => [authUser, ...prev.filter((u) => u.id !== authUser.id)]);
@@ -1612,8 +1648,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             authUser.email || authUser.username,
             'SUCCESS'
           );
-          // CRITICAL: Immediately load the updated database from cloud/server so classes, students and personal data appear instantly!
-          await forceSyncWithServer();
+          // CRITICAL: Immediately load the updated database from cloud/server with authUser override so role is preserved!
+          await forceSyncWithServer(authUser);
           return { success: true };
         }
       } else if (srvRes.status === 401 || srvRes.status === 403) {
@@ -1843,9 +1879,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: isAdmin ? 'ADMIN' : matchedUser.role,
         lastLogin: new Date().toISOString(),
       };
+      currentUserRef.current = updatedUser;
       setUsers((prev) => [updatedUser, ...prev.filter((u) => u.id !== updatedUser.id)]);
       setCurrentUser(updatedUser);
       setIsAuthenticated(true);
+      try {
+        localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
+        sessionStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(updatedUser));
+      } catch (e) {}
       addAuditLog(
         'Đăng nhập hệ thống',
         `Người dùng ${matchedUser.name} (${isAdmin ? 'ADMIN' : matchedUser.role} - Email: ${matchedUser.email}) đã đăng nhập thành công.`,
@@ -1873,11 +1914,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await serverRes.json();
       if (serverRes.ok && data.success && data.user) {
         const serverUser: User = data.user;
+        currentUserRef.current = serverUser;
         setUsers((prev) => [serverUser, ...prev.filter((u) => u.id !== serverUser.id)]);
         setCurrentUser(serverUser);
         setIsAuthenticated(true);
         try {
           localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(serverUser));
+          sessionStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(serverUser));
           localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify([serverUser, ...users.filter((u) => u.id !== serverUser.id)]));
         } catch (e) {}
         addAuditLog(
@@ -1887,7 +1930,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           serverUser.email || serverUser.username,
           'SUCCESS'
         );
-        forceSyncWithServer();
+        forceSyncWithServer(serverUser);
         return { success: true };
       }
       if (data.message) {
@@ -1902,11 +1945,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
-    if (currentUser) {
-      addAuditLog('Đăng xuất hệ thống', `Người dùng ${currentUser.name} đã đăng xuất.`);
+    if (currentUserRef.current) {
+      addAuditLog('Đăng xuất hệ thống', `Người dùng ${currentUserRef.current.name} đã đăng xuất.`);
     }
+    currentUserRef.current = null;
     setCurrentUser(null);
     setIsAuthenticated(false);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.AUTH);
+      sessionStorage.removeItem(STORAGE_KEYS.AUTH);
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_CLASS);
+    } catch (e) {}
   };
 
   // School Year Functions
@@ -4913,6 +4962,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const switchUserRole = (role: UserRole) => {
+    if (currentUser?.role !== 'ADMIN') return;
     const matched =
       users.find((u) => u.role === role) ||
       initialUsers.find((u) => u.role === role);
@@ -4920,7 +4970,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(matched);
     addAuditLog(
       'Chuyển đổi vai trò người dùng',
-      `Đã chuyển sang vai trò ${role} (${matched.name}) để kiểm thử phân quyền theo yêu cầu Giai đoạn 10.`,
+      `Quản trị viên đã chuyển giao diện kiểm tra vai trò ${role} (${matched.name}).`,
       'Bảo mật & Phân quyền',
       role,
       'SUCCESS'

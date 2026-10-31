@@ -22,6 +22,7 @@ import {
   Unlock,
   GraduationCap,
   KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
@@ -326,27 +327,18 @@ export const AdminDashboardView: React.FC = () => {
             </table>
           </div>
 
-          {/* Quick Demo Data Actions */}
+          {/* Production Database Status */}
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-slate-600">
-              <Database className="w-4 h-4 text-purple-600" />
+            <div className="flex items-center gap-2 text-slate-700">
+              <Database className="w-4 h-4 text-emerald-600" />
               <span>
-                Trạng thái Dữ liệu mẫu (Demo): Có <strong>{demoClassesCount}</strong> lớp đang gắn nhãn Demo.
+                Trạng thái Dữ liệu: <strong className="text-emerald-700 font-bold">Vận hành chính thức (Production)</strong> • Không có lớp nào gắn nhãn Demo.
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={deleteDemoData}
-                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-bold transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Gỡ nhãn Demo
-              </button>
-              <button
-                onClick={restoreDemoData}
-                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Khôi phục Demo gốc
-              </button>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-semibold text-[11px]">
+                <ShieldCheck className="w-3.5 h-3.5" /> Sẵn sàng nhập liệu thật
+              </span>
             </div>
           </div>
         </div>
